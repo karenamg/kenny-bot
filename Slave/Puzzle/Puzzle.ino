@@ -11,23 +11,17 @@ float r2 = 0;
 float r3 = 0;
 float r4 = 0;
 
-int id;
+int id = 9;
 
 void setup() {
   Serial.begin(9600);
   analogReference(EXTERNAL);
   delay(500);
-
-  id = 9;
-  r1 = 0;
-  r2 = 0;
-  r3 = 0;
-  r4 = 0;
 }
 
 void loop() {
   // Serial.print("R1 = ");
-  // Serial.print(calculateResistance(pin1, ref1));
+  // Serial.print(calculateResistance(pin1, ref2));
   // Serial.println("Ω");
   // Serial.print("R2 = ");
   // Serial.print(calculateResistance(pin2, ref2));
@@ -36,7 +30,7 @@ void loop() {
   // Serial.print(calculateResistance(pin3, ref1));
   // Serial.println("Ω");
   // Serial.print("R4 = ");
-  // Serial.print(calculateResistance(pin4, ref2));
+  // Serial.print(calculateResistance(pin4, ref1));
   // Serial.println("Ω");
   // delay(3000);
 }
@@ -129,13 +123,11 @@ String idToString(){
 
 String generateString(){
   String wagon = idToString();
-  wagon += "[";
   wagon += encoderEyes();
-  wagon += ",";
-  wagon += encoderAnimal();
-  wagon += ",";
   wagon += encoderDirection();
-  wagon += "]!";
+  wagon += encoderColor();
+  wagon += encoderSound();
+  wagon += "!";
   return wagon;
 }
 
@@ -188,7 +180,7 @@ String encoderColor(){
     return "X";
 }
 
-String encoderAnimal(){
+String encoderSound(){
   r4 = calculateResistance(pin4, ref1);
 
   if (r4 > 50 && r4 < 500)

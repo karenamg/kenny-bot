@@ -88,13 +88,8 @@ void serialEvent(){
     String counter = counterWagon(message[1]);
     Serial.print(counter);
   } else if (message[0] == '{'){
-    if (message.length() == 1){
-      Serial.print("X!");
-    } else {
-      String actions = message + generateString();
-      Serial.print(actions);
-    }
-    
+    String actions = message + generateString();
+    Serial.print(actions);
   }
 
   Serial.flush();
@@ -121,7 +116,7 @@ String counterWagon(char i){
       id = 6;
       return "*6!";
     default: 
-      id = -1;
+      id = 9;
       return "*9!";
   }
 }
@@ -138,6 +133,10 @@ String counterToString(){
       return "3";
     case 4:
       return "4";
+    case 5:
+      return "5";
+    case 6:
+      return "6";
     default: 
       return "9";
   }
@@ -146,6 +145,6 @@ String counterToString(){
 String generateString(){
   String loop = "%";
   loop += counterToString();
-  loop += "}!";
+  loop += "!";
   return loop;
 }

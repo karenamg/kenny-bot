@@ -51,7 +51,7 @@ const unsigned long timeout = 10000;
 LedControl lc = LedControl(DIN, CLK, CS, 2);
 Servo servo1;
 Servo servo2;
-SoftwareSerial portAudio(RX_DF, TX_DF); // RX, TX
+SoftwareSerial portAudio(TX_DF, RX_DF); // RX, TX
 DFRobotDFPlayerMini dfPlayer;
 
 // Plantilla
@@ -102,16 +102,24 @@ byte eye_close[8] = {
 void setup(){
   // Configuración de pines
   pinMode(BUTTON, INPUT_PULLUP);
+  pinMode(SENSOR, INPUT_PULLUP);
 
   pinMode(LED_R, OUTPUT);
   pinMode(LED_G, OUTPUT);
   pinMode(LED_B, OUTPUT);
   
-  pinMode(SENSOR, INPUT_PULLUP);
-
   analogWrite(LED_R, 0);
   analogWrite(LED_G, 0);
   analogWrite(LED_B, 255);
+  
+  // display setup
+  int devices = lc.getDeviceCount();
+  for(int address = 0; address < devices; address++) {
+    lc.shutdown(address, false);
+    lc.setIntensity(address, 1);
+    lc.clearDisplay(address);
+  }  
+  open_eyes();
 
   Serial.begin(9600);
 
@@ -300,4 +308,12 @@ void parseMessage(String actions){
   }
   i++;
   counter = loopToInteger(actions[i]);
+}
+
+// Funciones para ojos
+void open_eyes(){
+  for (int i = 0; i < 8; i++) {
+    lc.setRow(0,i,eye_open[i]);
+    lc.setRow(1,i,eye_open[i]);
+  }
 }

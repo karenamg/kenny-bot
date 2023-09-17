@@ -15,8 +15,8 @@
 #define SERVO_1 10
 #define SERVO_2 11
 #define LED_R A0
-#define LED_G A2
-#define LED_B A1
+#define LED_G A1
+#define LED_B A2
 
 // Estructura de cada vagón programado
 struct Puzzle {
@@ -34,7 +34,8 @@ Puzzle *list = NULL;
 Puzzle *currentPuzzle = NULL;
 
 volatile String robotState = "standby";
-volatile bool buttonState = true;
+volatile bool buttonState = false;
+volatile bool sensorState = false;
 volatile unsigned long buttonPressTime = 0;
 
 
@@ -50,7 +51,7 @@ const unsigned long timeout = 10000;
 LedControl lc = LedControl(DIN, CLK, CS, 2);
 Servo servo1;
 Servo servo2;
-SoftwareSerial portAudio(RX_DF, TX_DF); // RX, TX
+SoftwareSerial portAudio(TX_DF, RX_DF); // RX, TX
 DFRobotDFPlayerMini dfPlayer;
 
 // Plantilla
@@ -101,41 +102,27 @@ byte eye_close[8] = {
 void setup(){
   // Configuración de pines
   pinMode(BUTTON, INPUT_PULLUP);
-  pinMode(SENSOR, INPUT);
-  
-
-  pinMode(BUSSY, INPUT);
+  pinMode(SENSOR, INPUT_PULLUP);
 
   pinMode(LED_R, OUTPUT);
   pinMode(LED_G, OUTPUT);
   pinMode(LED_B, OUTPUT);
+  
+  analogWrite(LED_R, 0);
+  analogWrite(LED_G, 0);
+  analogWrite(LED_B, 255);
+  
+  // display setup
+  int devices = lc.getDeviceCount();
+  for(int address = 0; address < devices; address++) {
+    lc.shutdown(address, false);
+    lc.setIntensity(address, 1);
+    lc.clearDisplay(address);
+  }  
+  open_eyes();
 
   servo1.attach(SERVO_1); 
   servo2.attach(SERVO_2); 
-
-  // Set the baud rate for the Serial port
-  Serial.begin(9600);
-  // Set the baud rate for the SerialSoftware object
-  //portAudio.begin(9600);
-
-  if (portAudio.isListening()){
-    dfPlayer.volume(15);  //Set volume value. From 0 to 30
-    dfPlayer.play(1); 
-  }
-
-
-  // display setup
-  int devices=lc.getDeviceCount();
-  for(int address=0;address<devices;address++) {
-    lc.shutdown(address,false);
-    lc.setIntensity(address,1);
-    lc.clearDisplay(address);
-  }
-
-  open_eyes();
-  analogWrite(LED_R, 150);
-  analogWrite(LED_G, 0);
-  analogWrite(LED_B, 255);
 
   servo1.write(110); 
   servo2.write(70);  
@@ -143,9 +130,15 @@ void setup(){
   servo1.write(90); 
   servo2.write(90);  
 
-  buttonState = true;
+  Serial.begin(9600);
+  // Set the baud rate for the SerialSoftware object
+  //portAudio.begin(9600);
+
+  attachInterrupt(digitalPinToInterrupt(SENSOR), sensorInterrupt, CHANGE);
   attachInterrupt(digitalPinToInterrupt(BUTTON), buttonPressed, CHANGE);
-  delay(100);  
+  delay(50);
+
+  robotState = "standby";
 }
 
 void loop(){
@@ -200,32 +193,42 @@ void loop(){
 
 void buttonPressed() {
   buttonState = digitalRead(BUTTON);
-  delay(10);
+  delay(50);
 
-  Serial.print(buttonState);
-  // if (buttonState){
-  //   if(robotState == "standby"){
-  //     robotState = "counting";
-  //   } else if (robotState == "paused"){
-  //     if ((millis() - buttonPressTime) < 5000){
-  //       robotState = "playing";
-  //       // se reanudan las acciones del robot donde se pausaron
-  //     } else {
-  //       robotState = "standby";
-  //       // se eliminan las acciones en cola
-  //     }
-  //     buttonPressTime = 0;
-  //   }
-  // } else {
-  //   if (robotState == "playing"){
-  //     robotState = "paused";
-  //     // se envía mensaje de pausado a esclavos
-  //     // se pausan todas las acciones y se guarda el progreso
-  //     return;
-  //   } else if (robotState == "paused"){
-  //     buttonPressTime = millis();
-  //   }
-  // }
+  if (buttonState){
+    if(robotState == "standby"){
+      robotState = "counting";
+    } else if (robotState == "paused"){
+      if ((millis() - buttonPressTime) < 5000){
+        robotState = "playing";
+        // se reanudan las acciones del robot donde se pausaron
+      } else {
+        robotState = "standby";
+        // se eliminan las acciones en cola
+      }
+      buttonPressTime = 0;
+    }
+  } else {
+    if (robotState == "playing"){
+      robotState = "paused";
+      // se envía mensaje de pausado a esclavos
+      // se pausan todas las acciones y se guarda el progreso
+      return;
+    } else if (robotState == "paused"){
+      buttonPressTime = millis();
+    }
+  }
+}
+
+void sensorInterrupt() {
+  sensorState = digitalRead(SENSOR);
+  delay(50);
+
+  // Insertar logica para pausar al detectar obstaculos
+  // if (sensorState == HIGH)
+  //   Serial.println("Estamos fuera de la línea oscura");
+  // else
+  //   Serial.println("Zona oscura");
 }
 
 int counterToInteger(char c){
@@ -249,7 +252,7 @@ int counterToInteger(char c){
   }
 }
 
-int wagonToInteger(char i){
+  int wagonToInteger(char i){
   switch (i){
     case '1':
       return 1;
@@ -313,13 +316,10 @@ void parseMessage(String actions){
       currentPuzzle->next = newNode;
 
     currentPuzzle = newNode;
-
   }
-
   i++;
   counter = loopToInteger(actions[i]);
 }
-
 
 // Funciones para ojos
 void open_eyes(){

@@ -35,6 +35,7 @@ Puzzle *currentPuzzle = NULL;
 
 volatile String robotState = "standby";
 volatile bool buttonState = false;
+volatile bool sensorState = false;
 volatile unsigned long buttonPressTime = 0;
 
 
@@ -101,9 +102,12 @@ byte eye_close[8] = {
 void setup(){
   // Configuración de pines
   pinMode(BUTTON, INPUT_PULLUP);
+
   pinMode(LED_R, OUTPUT);
   pinMode(LED_G, OUTPUT);
   pinMode(LED_B, OUTPUT);
+  
+  pinMode(SENSOR, INPUT_PULLUP);
 
   analogWrite(LED_R, 0);
   analogWrite(LED_G, 0);
@@ -111,6 +115,7 @@ void setup(){
 
   Serial.begin(9600);
 
+  attachInterrupt(digitalPinToInterrupt(SENSOR), sensorInterrupt, CHANGE);
   attachInterrupt(digitalPinToInterrupt(BUTTON), buttonPressed, CHANGE);
   delay(50);
 
@@ -194,6 +199,17 @@ void buttonPressed() {
       buttonPressTime = millis();
     }
   }
+}
+
+void sensorInterrupt() {
+  sensorState = digitalRead(SENSOR);
+  delay(50);
+
+  // Insertar logica para pausar al detectar obstaculos
+  // if (sensorState == HIGH)
+  //   Serial.println("Estamos fuera de la línea oscura");
+  // else
+  //   Serial.println("Zona oscura");
 }
 
 int counterToInteger(char c){

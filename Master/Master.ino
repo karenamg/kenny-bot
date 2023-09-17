@@ -121,6 +121,15 @@ void setup(){
   }  
   open_eyes();
 
+  servo1.attach(SERVO_1); 
+  servo2.attach(SERVO_2); 
+
+  servo1.write(110); 
+  servo2.write(70);  
+  delay(5000);  
+  servo1.write(90); 
+  servo2.write(90);  
+
   Serial.begin(9600);
 
   attachInterrupt(digitalPinToInterrupt(SENSOR), sensorInterrupt, CHANGE);

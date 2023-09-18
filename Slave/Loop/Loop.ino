@@ -12,6 +12,9 @@ int id = 9;
 int currentStateCLK;
 int lastStateCLK;
 
+const unsigned long intervalExplore = 500; 
+unsigned long previousExplore = 0;
+
 void setup() {
 	// Configurar los pines como entradas
 	pinMode(CLK,INPUT);
@@ -38,7 +41,12 @@ void setup() {
 }
 
 void loop() {
-    //puede Crear su propia configuración de código aquí
+  // Realiza exploracion
+  unsigned long currentTime = millis();
+  if (currentTime - previousExplore >= intervalExplore){
+    previousExplore = currentTime;
+    Serial.print("HERE!"); 
+  }
 }
 
 void updateEncoder(){
@@ -84,10 +92,10 @@ void serialEvent(){
   // Serial.print("Input: ");
   // Serial.println(message);
 
-  if (message[0] == '*'){
+  if (message[0] == '#'){
     String counter = counterWagon(message[1]);
     Serial.print(counter);
-  } else if (message[0] == '{'){
+  } else if (message[0] == '$'){
     String actions = message + generateString();
     Serial.print(actions);
   }
@@ -99,25 +107,25 @@ String counterWagon(char i){
   switch (i){
     case '0':
       id = 1;
-      return "*1!";
+      return "#1!";
     case '1':
       id = 2;
-      return "*2!";
+      return "#2!";
     case '2':
       id = 3;
-      return "*3!";
+      return "#3!";
     case '3':
       id = 4;
-      return "*4!";
+      return "#4!";
     case '4':
       id = 5;
-      return "*5!";
+      return "#5!";
     case '5':
       id = 6;
-      return "*6!";
+      return "#6!";
     default: 
       id = 9;
-      return "*9!";
+      return "#9!";
   }
 }
 

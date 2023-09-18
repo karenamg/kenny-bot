@@ -1,22 +1,17 @@
 #include "LedControl.h"
 #include "Servo.h"
-#include <SoftwareSerial.h>
-#include <DFRobotDFPlayerMini.h>
 
 // Pin Definitions
 #define BUTTON 2
 #define SENSOR 3
-#define TX_DF 4
-#define RX_DF 5
-#define BUSSY 6
-#define CLK 7
-#define CS 8
-#define DIN 9
-#define SERVO_1 10
-#define SERVO_2 11
-#define LED_R A0
-#define LED_G A1
-#define LED_B A2
+#define CLK 4
+#define CS 5
+#define DIN 6
+#define SERVO_1 7
+#define SERVO_2 8
+#define LED_R 9
+#define LED_G 10
+#define LED_B 11
 
 // Estructura de cada vagón programado
 struct Puzzle {
@@ -25,7 +20,7 @@ struct Puzzle {
   char direction; 
   char color; 
   char sound; 
-  unsigned long timeout;
+  unsigned long timeslice;
   Puzzle *next;
 };
 
@@ -39,20 +34,25 @@ volatile bool sensorState = false;
 volatile unsigned long buttonPressTime = 0;
 
 
+// Variables de exploracion
+bool ledState = false;
+bool loopDetected = false;
 String str = "";
 int wagons = 0;
-int counter = 0;
-int index = 0;
+int iterations = 0;
+const unsigned long intervalExplore = 500; 
+unsigned long previousExplore = 0;
+const unsigned long timeout = 100;
 
 // Duración de cada recorrido
-const unsigned long timeout = 10000;
+const unsigned long timeslice = 10000;
 
 // Controladores
-LedControl lc = LedControl(DIN, CLK, CS, 2);
+LedControl lc = LedControl(DIN, CLK, CS, 3);
 Servo servo1;
 Servo servo2;
-SoftwareSerial portAudio(TX_DF, RX_DF); // RX, TX
-DFRobotDFPlayerMini dfPlayer;
+// SoftwareSerial portAudio(TX_DF, RX_DF); // RX, TX
+// DFRobotDFPlayerMini dfPlayer;
 
 // Plantilla
 byte eye_open[8] = {
@@ -99,6 +99,17 @@ byte eye_close[8] = {
   B00000000
 };
 
+byte smile[8] = {
+  B00000000,
+  B00000000,
+  B00000000,
+  B10000001,
+  B01000010,
+  B00111100,
+  B00000000,
+  B00000000
+};
+
 void setup(){
   // Configuración de pines
   pinMode(BUTTON, INPUT_PULLUP);
@@ -108,9 +119,7 @@ void setup(){
   pinMode(LED_G, OUTPUT);
   pinMode(LED_B, OUTPUT);
   
-  analogWrite(LED_R, 0);
-  analogWrite(LED_G, 0);
-  analogWrite(LED_B, 255);
+  setColor(0, 255, 0);
   
   // display setup
   int devices = lc.getDeviceCount();
@@ -120,19 +129,14 @@ void setup(){
     lc.clearDisplay(address);
   }  
   open_eyes();
+  smile_bot();
 
   servo1.attach(SERVO_1); 
   servo2.attach(SERVO_2); 
 
-  servo1.write(110); 
-  servo2.write(70);  
-  delay(5000);  
-  servo1.write(90); 
-  servo2.write(90);  
-
+  delay(1500);
+  turnOff();
   Serial.begin(9600);
-  // Set the baud rate for the SerialSoftware object
-  //portAudio.begin(9600);
 
   attachInterrupt(digitalPinToInterrupt(SENSOR), sensorInterrupt, CHANGE);
   attachInterrupt(digitalPinToInterrupt(BUTTON), buttonPressed, CHANGE);
@@ -142,53 +146,77 @@ void setup(){
 }
 
 void loop(){
-  if (robotState == "counting") {
-    Serial.print("*0!");   // Inicia el contador en 0
+  // Realiza exploracion
+  unsigned long currentTime = millis();
+  if (currentTime - previousExplore >= intervalExplore){
+    previousExplore = currentTime;
 
-    while (!Serial.available()) {
-      // agregar condicional de tiempo de espera
+    if(!loopDetected){
+      setColor(255, 0, 0);
+
     }
 
-    str = Serial.readStringUntil('!');
-    wagons = counterToInteger(str[1]);
-    str = "";
+    // str = Serial.readStringUntil('!');
+    // wagons = counterToInteger(str[1]);
 
-    if (wagons == 0 || wagons == 9 || wagons == 1){
-      robotState = "error";
-      return;
-    }
-
-    robotState = "reading"; 
-
-  } else if (robotState == "reading") {
-    Serial.print("{!");   // Inicia lectura de acciones
-
-    while (!Serial.available()) {
-      // agregar condicional de tiempo de espera
-    }
-
-    str = Serial.readStringUntil('!');
-
-    if (str.length() == 4){
-      robotState = "error";
-      return;
-    }
-
-    parseMessage(str);
-
-    if (list == NULL){
-      robotState = "error";
-      return;
-    }
-    
-    robotState = "playing";
-    // Se ejecuta el primer vagón
-
-  } else if (robotState == "playing") {
-
-  } else if (robotState == "pause") {
-
+    // if (wagons == 0 || wagons == 9 || wagons == 1){
+    //   robotState = "error";
+    //   return;
+    // }
   }
+
+  Serial.flush();
+
+
+  // if (robotState == "counting") {
+  //   Serial.print("#0!");   // Inicia el contador en 0
+
+  //   while (!Serial.available()) {
+  //     // agregar condicional de tiempo de espera
+  //   }
+
+  //   str = Serial.readStringUntil('!');
+  //   wagons = counterToInteger(str[1]);
+
+  //   if (wagons == 0 || wagons == 9 || wagons == 1){
+  //     robotState = "error";
+  //     return;
+  //   }
+
+  //   robotState = "reading"; 
+
+  // } else if (robotState == "reading") {
+  //   Serial.print("$!");   // Inicia lectura de acciones
+
+  //   while (!Serial.available()) {
+  //     // agregar condicional de tiempo de espera
+  //   }
+
+  //   str = Serial.readStringUntil('!');
+
+  //   if (str.length() == 3){
+  //     robotState = "error";
+  //     return;
+  //   }
+
+  //   parseMessage(str);
+
+  //   if (list == NULL){
+  //     robotState = "error";
+  //     return;
+  //   }
+    
+  //   robotState = "playing";
+
+  //   String prueba = "cadena generada: " + str;
+  //   Serial.print(prueba);
+  //   // Se ejecuta el primer vagón
+
+  // } else if (robotState == "playing") {
+
+  // } else if (robotState == "pause") {
+
+  // }
 }
 
 void buttonPressed() {
@@ -308,7 +336,7 @@ void parseMessage(String actions){
     sound = actions[i];
     i++;
 
-    Puzzle *newNode = new Puzzle{slave, eyes, direction, color, sound, timeout, NULL};
+    Puzzle *newNode = new Puzzle{slave, eyes, direction, color, sound, timeslice, NULL};
 
     if (list == NULL)
       list = newNode;
@@ -318,13 +346,29 @@ void parseMessage(String actions){
     currentPuzzle = newNode;
   }
   i++;
-  counter = loopToInteger(actions[i]);
+  iterations = loopToInteger(actions[i]);
 }
 
-// Funciones para ojos
+void setColor(int R, int G, int B) {
+  analogWrite(LED_R, R);
+  analogWrite(LED_G, G);
+  analogWrite(LED_B, B);
+}
+
+void turnOff() {
+  setColor(0, 0, 0);
+}
+
+// Funciones para display
 void open_eyes(){
   for (int i = 0; i < 8; i++) {
     lc.setRow(0,i,eye_open[i]);
     lc.setRow(1,i,eye_open[i]);
+  }
+}
+
+void smile_bot(){
+  for (int i = 0; i < 8; i++) {
+    lc.setRow(2,i,smile[i]);
   }
 }

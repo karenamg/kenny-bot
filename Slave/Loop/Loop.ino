@@ -12,7 +12,7 @@ int id = 9;
 int currentStateCLK;
 int lastStateCLK;
 
-const unsigned long intervalExplore = 500; 
+const unsigned long intervalExplore = 100; 
 unsigned long previousExplore = 0;
 
 void setup() {
@@ -41,12 +41,6 @@ void setup() {
 }
 
 void loop() {
-  // Realiza exploracion
-  unsigned long currentTime = millis();
-  if (currentTime - previousExplore >= intervalExplore){
-    previousExplore = currentTime;
-    Serial.print("HERE!"); 
-  }
 }
 
 void updateEncoder(){

@@ -133,68 +133,45 @@ String generateString(){
 
 String encoderEyes(){
   r1 = calculateResistance(pin1, ref2);
-
-  if (r1 > 70000 && r1 < 120000)
-    return "A";
-  else if (r1 > 45000 && r1 < 51000)
-    return "B";
-  else if (r1 > 18000 && r1 < 24000)
-    return "C";
-  else
-    return "X";
+  return encoderResistance(r1);
 }
 
 String encoderDirection(){
   r2 = calculateResistance(pin2, ref2);
-
-  if (r2 > 70000 && r2 < 120000)
-    return "J";
-  else if (r2 > 45000 && r2 < 51000)
-    return "K";
-  else if (r2 > 18000 && r2 < 24000)
-    return "L";
-  else if (r2 > 9000 && r2 < 15000)
-    return "M";
-  else if (r2 > 3500 && r2 < 7000)
-    return "N";
-  else
-    return "X";
+  return encoderResistance(r2);
 }
 
 String encoderColor(){
   r3 = calculateResistance(pin3, ref1);
-
-  if (r3 > 50 && r3 < 500)
-    return "O";
-  else if (r3 > 650 && r3 < 1500)
-    return "P";
-  else if (r3 > 1600 && r3 < 2700)
-    return "Q";
-  else if (r3 > 3700 && r3 < 5500)
-    return "R";
-  else if (r3 > 9000 && r3 < 13000)
-    return "S";
-  else if (r3 > 18000 && r3 < 24000)
-    return "P";
-  else
-    return "X";
+  return encoderResistance(r3);
 }
 
 String encoderSound(){
   r4 = calculateResistance(pin4, ref1);
+  return encoderResistance(r4);
+}
 
-  if (r4 > 50 && r4 < 500)
+String encoderResistance(float r){
+  if (r > 50 && r < 500)
+    return "A";
+  else if (r > 650 && r < 1500)
+    return "B";
+  else if (r > 1600 && r < 2700)
+    return "C";
+  else if (r > 4000 && r < 5000)
     return "D";
-  else if (r4 > 650 && r4 < 1500)
+  else if (r > 5000 && r < 6500)
     return "E";
-  else if (r4 > 1600 && r4 < 2700)
+  else if (r > 9000 && r < 11500)
     return "F";
-  else if (r4 > 3700 && r4 < 5500)
+  else if (r > 11501 && r < 13500)
     return "G";
-  else if (r4 > 9000 && r4 < 13000)
+  else if (r > 18000 && r < 24000)
     return "H";
-  else if (r4 > 18000 && r4 < 24000)
+  else if (r > 45000 && r < 51000)
     return "I";
+  else   if (r > 70000 && r < 120000)
+    return "J";
   else
     return "X";
 }

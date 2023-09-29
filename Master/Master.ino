@@ -28,27 +28,58 @@ struct Puzzle {
 Puzzle *list = NULL;
 Puzzle *currentPuzzle = NULL;
 
-volatile String robotState = "standby";
 volatile bool buttonState = false;
 volatile bool sensorState = false;
 volatile unsigned long buttonPressTime = 0;
 
+enum BotState {
+  STANDBY,
+  READING,
+  PLAYING,
+  PAUSED,
+  STOPING,
+  FINISHED
+};
+
+enum SerialPortState {
+  SLEEPING,
+  START_COUNT,
+  WAIT_COUNT_RESPONSE,
+  START_SCAN,
+  WAIT_SCAN_RESPONSE
+};
+
+enum SystemState {
+  RESET,
+  WAITING,
+  ERROR,
+  BUILDING,
+  OK
+};
+
+volatile BotState robotState = STANDBY;
+volatile SerialPortState serialPortState = SLEEPING;
+volatile SystemState systemState = RESET;
+
+// Variables para el efecto del arcoíris
+unsigned long rainbowStartTime = 0;
+unsigned long rainbowDuration = 0;
+int rainbowCycles = 0;
+float rainbowProgress = 0.0;
 
 // Variables de exploracion
-bool ledState = false;
-bool loopDetected = false;
-String str = "";
-int wagons = 0;
-int iterations = 0;
-const unsigned long intervalExplore = 500; 
-unsigned long previousExplore = 0;
-const unsigned long timeout = 100;
+String message = "";
+String scanResult = "";
+int wagonsCount = 0;
+int iterationsCount = 0;
+const unsigned long intervalScan = 500; 
+unsigned long lastScanTime = 0;
 
 // Duración de cada recorrido
 const unsigned long timeslice = 10000;
 
 // Controladores
-LedControl lc = LedControl(DIN, CLK, CS, 3);
+LedControl lc = LedControl(DIN, CLK, CS, 2);
 Servo servo1;
 Servo servo2;
 // SoftwareSerial portAudio(TX_DF, RX_DF); // RX, TX
@@ -99,17 +130,6 @@ byte eye_close[8] = {
   B00000000
 };
 
-byte smile[8] = {
-  B00000000,
-  B00000000,
-  B00000000,
-  B10000001,
-  B01000010,
-  B00111100,
-  B00000000,
-  B00000000
-};
-
 void setup(){
   // Configuración de pines
   pinMode(BUTTON, INPUT_PULLUP);
@@ -119,7 +139,6 @@ void setup(){
   pinMode(LED_G, OUTPUT);
   pinMode(LED_B, OUTPUT);
   
-  setColor(0, 255, 0);
   
   // display setup
   int devices = lc.getDeviceCount();
@@ -129,94 +148,47 @@ void setup(){
     lc.clearDisplay(address);
   }  
   open_eyes();
-  smile_bot();
+  startRainbowEffect(3000, 8);
 
-  servo1.attach(SERVO_1); 
-  servo2.attach(SERVO_2); 
+  // servo1.attach(SERVO_1); 
+  // servo2.attach(SERVO_2); 
 
-  delay(1500);
-  turnOff();
   Serial.begin(9600);
 
   attachInterrupt(digitalPinToInterrupt(SENSOR), sensorInterrupt, CHANGE);
   attachInterrupt(digitalPinToInterrupt(BUTTON), buttonPressed, CHANGE);
   delay(50);
+  
 
-  robotState = "standby";
+  systemState = RESET;
+  serialPortState = SLEEPING;
 }
 
 void loop(){
   // Realiza exploracion
-  unsigned long currentTime = millis();
-  if (currentTime - previousExplore >= intervalExplore){
-    previousExplore = currentTime;
-
-    if(!loopDetected){
-      setColor(255, 0, 0);
-
-    }
-
-    // str = Serial.readStringUntil('!');
-    // wagons = counterToInteger(str[1]);
-
-    // if (wagons == 0 || wagons == 9 || wagons == 1){
-    //   robotState = "error";
-    //   return;
-    // }
-  }
-
-  Serial.flush();
-
-
-  // if (robotState == "counting") {
-  //   Serial.print("#0!");   // Inicia el contador en 0
-
-  //   while (!Serial.available()) {
-  //     // agregar condicional de tiempo de espera
-  //   }
-
-  //   str = Serial.readStringUntil('!');
-  //   wagons = counterToInteger(str[1]);
-
-  //   if (wagons == 0 || wagons == 9 || wagons == 1){
-  //     robotState = "error";
-  //     return;
-  //   }
-
-  //   robotState = "reading"; 
-
-  // } else if (robotState == "reading") {
-  //   Serial.print("$!");   // Inicia lectura de acciones
-
-  //   while (!Serial.available()) {
-  //     // agregar condicional de tiempo de espera
-  //   }
-
-  //   str = Serial.readStringUntil('!');
-
-  //   if (str.length() == 3){
-  //     robotState = "error";
-  //     return;
-  //   }
-
-  //   parseMessage(str);
-
-  //   if (list == NULL){
-  //     robotState = "error";
-  //     return;
-  //   }
-    
-  //   robotState = "playing";
-
-  //   String prueba = "cadena generada: " + str;
-  //   Serial.print(prueba);
-  //   // Se ejecuta el primer vagón
-
-  // } else if (robotState == "playing") {
-
-  // } else if (robotState == "pause") {
-
+  // unsigned long currentTime = millis();
+  // if (currentTime - previousExplore >= intervalExplore){
+  //   previousExplore = millis();
   // }
+
+  
+  // if(robotState == READING){
+  //   setColor(255, 0, 255);
+  // }
+  // Serial.flush();
+
+  int isPower = updateRainbowEffect();
+  updateScan();
+
+  if (!isPower){
+    if(systemState == ERROR){
+      setColor(255, 0, 0);
+    } else if(systemState == BUILDING){
+      setColor(255, 255, 0);
+    } else if(systemState == OK){
+      setColor(0, 0, 255);
+    }
+  }
 }
 
 void buttonPressed() {
@@ -224,25 +196,25 @@ void buttonPressed() {
   delay(50);
 
   if (buttonState){
-    if(robotState == "standby"){
-      robotState = "counting";
-    } else if (robotState == "paused"){
+    if(systemState == OK){
+      robotState = READING;
+    } else if (robotState == PAUSED){
       if ((millis() - buttonPressTime) < 5000){
-        robotState = "playing";
+        robotState = PLAYING;
         // se reanudan las acciones del robot donde se pausaron
       } else {
-        robotState = "standby";
+        robotState = STOPING;
         // se eliminan las acciones en cola
       }
       buttonPressTime = 0;
     }
   } else {
-    if (robotState == "playing"){
-      robotState = "paused";
+    if (robotState == PLAYING){
+      robotState = PAUSED;
       // se envía mensaje de pausado a esclavos
       // se pausan todas las acciones y se guarda el progreso
       return;
-    } else if (robotState == "paused"){
+    } else if (robotState == PAUSED){
       buttonPressTime = millis();
     }
   }
@@ -253,10 +225,6 @@ void sensorInterrupt() {
   delay(50);
 
   // Insertar logica para pausar al detectar obstaculos
-  // if (sensorState == HIGH)
-  //   Serial.println("Estamos fuera de la línea oscura");
-  // else
-  //   Serial.println("Zona oscura");
 }
 
 int counterToInteger(char c){
@@ -346,7 +314,7 @@ void parseMessage(String actions){
     currentPuzzle = newNode;
   }
   i++;
-  iterations = loopToInteger(actions[i]);
+  iterationsCount = loopToInteger(actions[i]);
 }
 
 void setColor(int R, int G, int B) {
@@ -367,8 +335,153 @@ void open_eyes(){
   }
 }
 
-void smile_bot(){
-  for (int i = 0; i < 8; i++) {
-    lc.setRow(2,i,smile[i]);
+// Función para iniciar el efecto del arcoíris
+void startRainbowEffect(unsigned long duration, int cycles) {
+  rainbowStartTime = millis();
+  rainbowDuration = duration;
+  rainbowCycles = cycles;
+  rainbowProgress = 0.0;
+}
+
+bool updateRainbowEffect() {
+  if (rainbowStartTime == 0) {
+    // El efecto del arcoíris no está activo
+    return 0;
+  }
+
+  unsigned long elapsedTime = millis() - rainbowStartTime;
+
+  if (elapsedTime >= rainbowDuration) {
+    // El efecto del arcoíris ha finalizado
+    rainbowStartTime = 0;
+    turnOff(); // Apagar el LED al finalizar el efecto
+    return 0;
+  }
+
+  // Calcular el progreso actual del arcoíris
+  rainbowProgress = (float)elapsedTime / (float)rainbowDuration;
+
+  // Calcular el valor del componente rojo (R)
+  int red = (1 + sin(rainbowProgress * 2 * rainbowCycles * PI + 2 * PI / 3)) * 127;
+  // Calcular el valor del componente verde (G)
+  int green = (1 + sin(rainbowProgress * 2 * rainbowCycles * PI + 4 * PI / 3)) * 127;
+  // Calcular el valor del componente azul (B)
+  int blue = (1 + sin(rainbowProgress * 2 * rainbowCycles * PI + 6 * PI / 3)) * 127;
+
+  setColor(red, green, blue);
+  return 1;
+}
+
+void resetScanValues(){
+  wagonsCount = 0;
+  iterationsCount = 0;
+  lastScanTime = millis();
+  message = "";
+  scanResult = "";
+}
+
+int scanMessage(String message){
+  int counterX = 0; 
+
+  for (int i = 0; i < message.length(); i++)
+    if (message.charAt(i) == 'X') 
+      counterX++; 
+    
+  return counterX;
+}
+
+void updateScan(){
+  unsigned long currentTime = millis();
+
+  if(systemState == RESET){
+    resetScanValues();
+    systemState = WAITING;
+    serialPortState = START_COUNT;
+  } else if(systemState == WAITING){
+    if(currentTime - lastScanTime >= intervalScan){
+      systemState = ERROR;
+      serialPortState = SLEEPING;
+      resetScanValues();
+      return;
+    }
+  }
+
+
+  switch (serialPortState){
+    case SLEEPING:
+      if(currentTime - lastScanTime >= intervalScan){
+        resetScanValues();
+        serialPortState = START_COUNT;
+      }
+    break;
+    case START_COUNT:
+      Serial.print("#0!");   // Inicia conteo de vagones
+      serialPortState = WAIT_COUNT_RESPONSE;
+    break;
+    case WAIT_COUNT_RESPONSE:
+      if(currentTime - lastScanTime >= intervalScan){
+        systemState = ERROR;
+        serialPortState = SLEEPING;
+        resetScanValues(); // REVISARRR
+        return;
+      }
+
+      if(Serial.available() > 0){
+        message = Serial.readStringUntil('!');
+        wagonsCount = counterToInteger(message[1]);
+
+        if(wagonsCount == 0 || wagonsCount == 1 || wagonsCount == 9){
+          systemState = ERROR;
+          serialPortState = SLEEPING;
+          resetScanValues(); // REVISARRR
+          return;
+        }
+
+        serialPortState = START_SCAN;
+      }
+    break;
+    case START_SCAN:
+      Serial.print("$!");   // Inicia scaneo de vagones
+      serialPortState = WAIT_SCAN_RESPONSE;
+    break;
+    case WAIT_SCAN_RESPONSE:
+      if(currentTime - lastScanTime >= intervalScan){
+        systemState = ERROR;
+        serialPortState = SLEEPING;
+        resetScanValues();
+        return;
+      }
+
+      if(Serial.available() > 0){
+        scanResult = Serial.readStringUntil('!');
+
+        if(scanResult.length() == 3){
+          systemState = ERROR;
+          serialPortState = SLEEPING;
+          resetScanValues(); // REVISARRR
+          return;
+        }
+
+        serialPortState = SLEEPING;
+
+        if (scanMessage(scanResult) > 0)
+          systemState = BUILDING;
+        else 
+          systemState = OK;
+      }
+    break;
   }
 }
+
+// void updateSystem(){
+//   switch (sysemState){
+//     case RESET:
+//     break;
+//     case ERROR:
+//     break;
+//     case BUILDING:
+//     break;
+//     case OK:
+//     break;
+//   }
+// }

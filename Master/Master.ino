@@ -51,7 +51,7 @@ enum SerialPortState {
   WAIT_SCAN_RESPONSE
 };
 
-enum SystemState {
+enum SysState {
   RESET,
   WAITING,
   ERROR,
@@ -59,15 +59,26 @@ enum SystemState {
   OK
 };
 
-volatile BotState robotState = TURN_ON;
+volatile BotState currentRobotState = TURN_ON;
+volatile BotState previousRobotState = TURN_ON;
 volatile SerialPortState serialPortState = SLEEPING;
-volatile SystemState systemState = RESET;
+volatile SysState currentSystemState = RESET;
+volatile SysState previousSystemState = RESET;
 
 // Variables para el efecto del arcoíris
 unsigned long rainbowStartTime = 0;
 unsigned long rainbowDuration = 0;
 int rainbowCycles = 0;
 float rainbowProgress = 0.0;
+
+// Variables para paradeo de led
+unsigned long blinkStartTime = 0;
+unsigned long blinkDuration = 0; // Duración total del parpadeo en milisegundos
+unsigned long blinkInterval = 0; // Intervalo de tiempo entre encendido y apagado en milisegundos
+bool blinkState = false; // Estado del parpadeo (0: LED apagado, 1: LED encendido)
+int red_blink = 0;
+int green_blink = 0;
+int blue_blink = 0;
 
 // Variables de exploracion
 String message = "";
@@ -164,7 +175,8 @@ void setup(){
 
 void loop(){
   updateSystem();
-  updateLed();
+  if (checkStateChange())
+    updateLed();
 }
 
 void buttonPressed() {
@@ -172,27 +184,28 @@ void buttonPressed() {
   delay(50);
 
   if (buttonState){
-    if(robotState == STANDBY && systemState == OK){
+    if(currentRobotState == STANDBY && currentSystemState == OK){
       startRainbowEffect(3000, 8);
-      robotState = READING;
-    } else if (robotState == PAUSED && paused){
+      currentRobotState = READING;
+    } else if (currentRobotState == PAUSED && paused){
       if ((millis() - buttonPressTime) < 4000){
-        robotState = PLAYING;
+        currentRobotState = PLAYING;
         // se reanudan las acciones del robot donde se pausaron
       } else {
-        robotState = STOPING;
+        currentRobotState = STOPING;
+        startBlinkEffect(3000, 300, "red");
         // se eliminan las acciones en cola
       }
       buttonPressTime = 0;
     }
   } else {
-    if (robotState == PLAYING){
-      robotState = PAUSED;
+    if (currentRobotState == PLAYING){
+      currentRobotState = PAUSED;
       paused = false;
       // se envía mensaje de pausado a esclavos
       // se pausan todas las acciones y se guarda el progreso
       return;
-    } else if (robotState == PAUSED){
+    } else if (currentRobotState == PAUSED){
       buttonPressTime = millis();
       paused = true;
     }
@@ -322,6 +335,49 @@ void startRainbowEffect(unsigned long duration, int cycles) {
   rainbowProgress = 0.0;
 }
 
+// Función para iniciar el parpadeo de led
+void startBlinkEffect(unsigned long duration, unsigned long interval, String color) {
+  blinkStartTime = millis();
+  blinkDuration = duration;
+  blinkInterval = interval;
+  turnOff();
+  blinkState = false;
+
+  if (color == "red"){
+    red_blink = 255;
+    green_blink = 0;
+    blue_blink = 0;
+  } else if (color == "green"){
+    red_blink = 0;
+    green_blink = 255;
+    blue_blink = 0;
+  } else if (color == "blue"){
+    red_blink = 0;
+    green_blink = 0;
+    blue_blink = 255;
+  } else if (color == "yellow"){
+    red_blink = 255;
+    green_blink = 255;
+    blue_blink = 0;
+  } else if (color == "pink"){
+    red_blink = 255;
+    green_blink = 0;
+    blue_blink = 255;
+  } else if (color == "cyan"){
+    red_blink = 0;
+    green_blink = 255;
+    blue_blink = 255;
+  } else if (color == "white"){
+    red_blink = 255;
+    green_blink = 255;
+    blue_blink = 255;
+  } else {
+    red_blink = 0;
+    green_blink = 0;
+    blue_blink = 0;
+  }
+}
+
 bool updateRainbowEffect() {
   if (rainbowStartTime == 0) {
     // El efecto del arcoíris no está activo
@@ -351,6 +407,38 @@ bool updateRainbowEffect() {
   return 1;
 }
 
+bool updateBlinkEffect() {
+  if (blinkStartTime == 0) {
+    // El efecto de parpadeo no está activo
+    return 0;
+  }
+
+  unsigned long elapsedTime = millis() - blinkStartTime;
+
+  if (elapsedTime >= blinkDuration) {
+    // El efecto de parpadeo ha finalizado
+    blinkStartTime = 0;
+    turnOff(); // Apagar el LED al finalizar el efecto
+    return 0;
+  }
+
+  if (elapsedTime % blinkInterval < blinkInterval / 2) {
+    if (blinkState == 0) {
+      // Encender el LED
+      setColor(red_blink, green_blink, blue_blink);
+      blinkState = 1;
+    }
+  } else {
+    if (blinkState == 1) {
+      // Apagar el LED
+      turnOff();
+      blinkState = 0;
+    }
+  }
+
+  return 1;
+}
+
 void resetScanValues(){
   wagonsCount = 0;
   iterationsCount = 0;
@@ -372,13 +460,13 @@ int scanMessage(String message){
 void updateSystem(){
   unsigned long currentTime = millis();
 
-  if(systemState == RESET){
+  if(currentSystemState == RESET){
     resetScanValues();
-    systemState = WAITING;
+    currentSystemState = WAITING;
     serialPortState = START_COUNT;
-  } else if(systemState == WAITING){
+  } else if(currentSystemState == WAITING){
     if(currentTime - lastScanTime >= intervalScan){
-      systemState = ERROR;
+      currentSystemState = ERROR;
       serialPortState = SLEEPING;
       resetScanValues();
       return;
@@ -398,7 +486,7 @@ void updateSystem(){
     break;
     case WAIT_COUNT_RESPONSE:
       if(currentTime - lastScanTime >= intervalScan){
-        systemState = ERROR;
+        currentSystemState = ERROR;
         serialPortState = SLEEPING;
         resetScanValues(); // REVISARRR
         return;
@@ -409,7 +497,7 @@ void updateSystem(){
         wagonsCount = counterToInteger(message[1]);
 
         if(wagonsCount == 0 || wagonsCount == 1 || wagonsCount == 9){
-          systemState = ERROR;
+          currentSystemState = ERROR;
           serialPortState = SLEEPING;
           resetScanValues(); // REVISARRR
           return;
@@ -424,7 +512,7 @@ void updateSystem(){
     break;
     case WAIT_SCAN_RESPONSE:
       if(currentTime - lastScanTime >= intervalScan){
-        systemState = ERROR;
+        currentSystemState = ERROR;
         serialPortState = SLEEPING;
         resetScanValues();
         return;
@@ -434,7 +522,7 @@ void updateSystem(){
         scanResult = Serial.readStringUntil('!');
 
         if(scanResult.length() == 3){
-          systemState = ERROR;
+          currentSystemState = ERROR;
           serialPortState = SLEEPING;
           resetScanValues(); // REVISARRR
           return;
@@ -443,22 +531,22 @@ void updateSystem(){
         serialPortState = SLEEPING;
 
         if (scanMessage(scanResult) > 0)
-          systemState = BUILDING;
+          currentSystemState = BUILDING;
         else 
-          systemState = OK;
+          currentSystemState = OK;
       }
     break;
   }
 }
 
 void updateLed(){
-  switch (robotState){
+  switch (currentRobotState){
     case TURN_ON:
       if (!updateRainbowEffect())
-        robotState = STANDBY;
+        currentRobotState = STANDBY;
     break;
     case STANDBY:
-      switch (systemState){
+      switch (currentSystemState){
         case ERROR:
           setColor(255, 0, 0);
         break;
@@ -472,7 +560,7 @@ void updateLed(){
     break;
     case READING:
       if (!updateRainbowEffect())
-        robotState = PLAYING;
+        currentRobotState = PLAYING;
     break;
     case PLAYING:
       setColor(255, 255, 255);
@@ -481,11 +569,48 @@ void updateLed(){
       setColor(255, 255, 0);
     break;
     case STOPING:
-      setColor(255, 0, 0);
+      if (!updateBlinkEffect())
+        currentRobotState = STANDBY;
     break;
     case FINISHED:
       if (!updateRainbowEffect())
-        robotState = STANDBY;
+        currentRobotState = STANDBY;
     break;
   }
+}
+
+bool checkStateChange(){
+  bool changeRobotState = (currentRobotState != previousRobotState);
+  bool changeSystemState = (currentSystemState != previousSystemState);
+
+  if (changeRobotState){
+    previousRobotState = currentRobotState;
+    return 1;
+  }
+  
+  if (changeSystemState)
+    previousSystemState = currentSystemState;
+
+  switch(currentRobotState){
+    case TURN_ON:
+    case FINISHED:
+    case STOPING:
+      return 1;
+    break;
+    case STANDBY:
+      if(changeSystemState)
+        return 1;
+    break;
+    case READING:
+    case PLAYING:
+    case PAUSED:
+      if(changeSystemState){
+        currentRobotState = STOPING;
+        startBlinkEffect(3000, 300, "red");
+      }
+      return 1;
+    break;
+  }
+
+  return 0;
 }

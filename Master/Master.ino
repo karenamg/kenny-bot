@@ -185,16 +185,26 @@ void buttonPressed() {
 
   if (buttonState){
     if(currentRobotState == STANDBY && currentSystemState == OK){
-      startRainbowEffect(3000, 8);
-      currentRobotState = READING;
+      parseMessage(scanResult);
+
+      if (list == NULL){
+        currentRobotState = STOPING;
+        currentSystemState = RESET;
+        startBlinkEffect(3000, 300, "red");
+      } else {
+        currentRobotState = READING;
+        startRainbowEffect(3000, 8);
+      }
+
     } else if (currentRobotState == PAUSED && paused){
       if ((millis() - buttonPressTime) < 4000){
         currentRobotState = PLAYING;
         // se reanudan las acciones del robot donde se pausaron
       } else {
         currentRobotState = STOPING;
+        currentSystemState = RESET;
         startBlinkEffect(3000, 300, "red");
-        // se eliminan las acciones en cola
+        deleteList();
       }
       buttonPressTime = 0;
     }
@@ -307,6 +317,17 @@ void parseMessage(String actions){
   }
   i++;
   iterationsCount = loopToInteger(actions[i]);
+}
+
+void deleteList() {
+  Puzzle* currentNode = list;
+  while (currentNode != NULL) {
+    Puzzle* nextNode = currentNode->next;
+    delete currentNode;
+    currentNode = nextNode;
+  }
+  list = NULL; // Reiniciar el puntero a la lista
+  currentPuzzle = NULL;
 }
 
 void setColor(int R, int G, int B) {
@@ -606,7 +627,9 @@ bool checkStateChange(){
     case PAUSED:
       if(changeSystemState){
         currentRobotState = STOPING;
+        currentSystemState = RESET;
         startBlinkEffect(3000, 300, "red");
+        deleteList();
       }
       return 1;
     break;

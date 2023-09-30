@@ -28,11 +28,13 @@ struct Puzzle {
 Puzzle *list = NULL;
 Puzzle *currentPuzzle = NULL;
 
-volatile bool buttonState = false;
+volatile bool buttonState = true;
+volatile bool paused = false;
 volatile bool sensorState = false;
 volatile unsigned long buttonPressTime = 0;
 
 enum BotState {
+  TURN_ON,
   STANDBY,
   READING,
   PLAYING,
@@ -57,7 +59,7 @@ enum SystemState {
   OK
 };
 
-volatile BotState robotState = STANDBY;
+volatile BotState robotState = TURN_ON;
 volatile SerialPortState serialPortState = SLEEPING;
 volatile SystemState systemState = RESET;
 
@@ -158,37 +160,11 @@ void setup(){
   attachInterrupt(digitalPinToInterrupt(SENSOR), sensorInterrupt, CHANGE);
   attachInterrupt(digitalPinToInterrupt(BUTTON), buttonPressed, CHANGE);
   delay(50);
-  
-
-  systemState = RESET;
-  serialPortState = SLEEPING;
 }
 
 void loop(){
-  // Realiza exploracion
-  // unsigned long currentTime = millis();
-  // if (currentTime - previousExplore >= intervalExplore){
-  //   previousExplore = millis();
-  // }
-
-  
-  // if(robotState == READING){
-  //   setColor(255, 0, 255);
-  // }
-  // Serial.flush();
-
-  int isPower = updateRainbowEffect();
-  updateScan();
-
-  if (!isPower){
-    if(systemState == ERROR){
-      setColor(255, 0, 0);
-    } else if(systemState == BUILDING){
-      setColor(255, 255, 0);
-    } else if(systemState == OK){
-      setColor(0, 0, 255);
-    }
-  }
+  updateSystem();
+  updateLed();
 }
 
 void buttonPressed() {
@@ -196,10 +172,11 @@ void buttonPressed() {
   delay(50);
 
   if (buttonState){
-    if(systemState == OK){
+    if(robotState == STANDBY && systemState == OK){
+      startRainbowEffect(3000, 8);
       robotState = READING;
-    } else if (robotState == PAUSED){
-      if ((millis() - buttonPressTime) < 5000){
+    } else if (robotState == PAUSED && paused){
+      if ((millis() - buttonPressTime) < 4000){
         robotState = PLAYING;
         // se reanudan las acciones del robot donde se pausaron
       } else {
@@ -211,11 +188,13 @@ void buttonPressed() {
   } else {
     if (robotState == PLAYING){
       robotState = PAUSED;
+      paused = false;
       // se envía mensaje de pausado a esclavos
       // se pausan todas las acciones y se guarda el progreso
       return;
     } else if (robotState == PAUSED){
       buttonPressTime = millis();
+      paused = true;
     }
   }
 }
@@ -248,7 +227,7 @@ int counterToInteger(char c){
   }
 }
 
-  int wagonToInteger(char i){
+int wagonToInteger(char i){
   switch (i){
     case '1':
       return 1;
@@ -390,7 +369,7 @@ int scanMessage(String message){
   return counterX;
 }
 
-void updateScan(){
+void updateSystem(){
   unsigned long currentTime = millis();
 
   if(systemState == RESET){
@@ -405,7 +384,6 @@ void updateScan(){
       return;
     }
   }
-
 
   switch (serialPortState){
     case SLEEPING:
@@ -473,15 +451,41 @@ void updateScan(){
   }
 }
 
-// void updateSystem(){
-//   switch (sysemState){
-//     case RESET:
-//     break;
-//     case ERROR:
-//     break;
-//     case BUILDING:
-//     break;
-//     case OK:
-//     break;
-//   }
-// }
+void updateLed(){
+  switch (robotState){
+    case TURN_ON:
+      if (!updateRainbowEffect())
+        robotState = STANDBY;
+    break;
+    case STANDBY:
+      switch (systemState){
+        case ERROR:
+          setColor(255, 0, 0);
+        break;
+        case BUILDING:
+          setColor(255, 255, 0);
+        break;
+        case OK:
+          setColor(0, 0, 255);
+        break;
+      }
+    break;
+    case READING:
+      if (!updateRainbowEffect())
+        robotState = PLAYING;
+    break;
+    case PLAYING:
+      setColor(255, 255, 255);
+    break;
+    case PAUSED:
+      setColor(255, 255, 0);
+    break;
+    case STOPING:
+      setColor(255, 0, 0);
+    break;
+    case FINISHED:
+      if (!updateRainbowEffect())
+        robotState = STANDBY;
+    break;
+  }
+}

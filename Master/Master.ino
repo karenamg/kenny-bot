@@ -2,16 +2,16 @@
 #include "Servo.h"
 
 // Pin Definitions
-#define BUTTON 2
-#define SENSOR 3
-#define CLK 4
-#define CS 5
-#define DIN 6
-#define SERVO_1 7
-#define SERVO_2 8
-#define LED_R 9
-#define LED_G 10
-#define LED_B 11
+#define BUTTON 2    //CHECK
+#define SENSOR 4
+#define CLK 13      //CHECK
+#define CS 12       //CHECK
+#define DIN 11      //CHECK
+#define SERVO_1 3   //CHECK
+#define SERVO_2 5   //CHECK
+#define LED_R 6     //CHECK
+#define LED_G 9     //CHECK
+#define LED_B 10    //CHECK
 
 // Estructura de cada vagón programado
 struct Puzzle {
@@ -20,7 +20,7 @@ struct Puzzle {
   char direction; 
   char color; 
   char sound; 
-  unsigned long timeslice;
+  unsigned long timeSlice;
   Puzzle *next;
 };
 
@@ -89,7 +89,8 @@ const unsigned long intervalScan = 500;
 unsigned long lastScanTime = 0;
 
 // Duración de cada recorrido
-const unsigned long timeslice = 10000;
+const unsigned long timeSlice = 10000;
+unsigned long playStartTime = 0;
 
 // Controladores
 LedControl lc = LedControl(DIN, CLK, CS, 2);
@@ -146,7 +147,7 @@ byte eye_close[8] = {
 void setup(){
   // Configuración de pines
   pinMode(BUTTON, INPUT_PULLUP);
-  pinMode(SENSOR, INPUT_PULLUP);
+  //pinMode(SENSOR, INPUT_PULLUP);
 
   pinMode(LED_R, OUTPUT);
   pinMode(LED_G, OUTPUT);
@@ -168,7 +169,7 @@ void setup(){
 
   Serial.begin(9600);
 
-  attachInterrupt(digitalPinToInterrupt(SENSOR), sensorInterrupt, CHANGE);
+  //attachInterrupt(digitalPinToInterrupt(SENSOR), sensorInterrupt, CHANGE);
   attachInterrupt(digitalPinToInterrupt(BUTTON), buttonPressed, CHANGE);
   delay(50);
 }
@@ -199,6 +200,7 @@ void buttonPressed() {
     } else if (currentRobotState == PAUSED && paused){
       if ((millis() - buttonPressTime) < 4000){
         currentRobotState = PLAYING;
+        executeActions();
         // se reanudan las acciones del robot donde se pausaron
       } else {
         currentRobotState = STOPING;
@@ -212,6 +214,8 @@ void buttonPressed() {
     if (currentRobotState == PLAYING){
       currentRobotState = PAUSED;
       paused = false;
+      startBlinkEffect(0, 750, "yellow");
+      pauseActions();
       // se envía mensaje de pausado a esclavos
       // se pausan todas las acciones y se guarda el progreso
       return;
@@ -306,7 +310,7 @@ void parseMessage(String actions){
     sound = actions[i];
     i++;
 
-    Puzzle *newNode = new Puzzle{slave, eyes, direction, color, sound, timeslice, NULL};
+    Puzzle *newNode = new Puzzle{slave, eyes, direction, color, sound, timeSlice, NULL};
 
     if (list == NULL)
       list = newNode;
@@ -317,6 +321,7 @@ void parseMessage(String actions){
   }
   i++;
   iterationsCount = loopToInteger(actions[i]);
+  currentPuzzle = list;
 }
 
 void deleteList() {
@@ -378,7 +383,7 @@ void startBlinkEffect(unsigned long duration, unsigned long interval, String col
     blue_blink = 255;
   } else if (color == "yellow"){
     red_blink = 255;
-    green_blink = 255;
+    green_blink = 100;
     blue_blink = 0;
   } else if (color == "pink"){
     red_blink = 255;
@@ -428,19 +433,22 @@ bool updateRainbowEffect() {
   return 1;
 }
 
-bool updateBlinkEffect() {
-  if (blinkStartTime == 0) {
-    // El efecto de parpadeo no está activo
+void finishBlinkEffect(){
+  blinkStartTime = 0;
+  turnOff(); // Apagar el LED al finalizar el efecto
+}
+
+bool updateBlinkEffect(bool infinity) {
+  if (blinkStartTime == 0) // El efecto de parpadeo no está activo
     return 0;
-  }
 
   unsigned long elapsedTime = millis() - blinkStartTime;
 
-  if (elapsedTime >= blinkDuration) {
-    // El efecto de parpadeo ha finalizado
-    blinkStartTime = 0;
-    turnOff(); // Apagar el LED al finalizar el efecto
-    return 0;
+  if (!infinity){
+    if (elapsedTime >= blinkDuration) {
+      finishBlinkEffect();
+      return 0;
+    }
   }
 
   if (elapsedTime % blinkInterval < blinkInterval / 2) {
@@ -572,25 +580,27 @@ void updateLed(){
           setColor(255, 0, 0);
         break;
         case BUILDING:
-          setColor(255, 255, 0);
+          setColor(255, 100, 0);
         break;
         case OK:
-          setColor(0, 0, 255);
+          setColor(0, 255, 0);
         break;
       }
     break;
     case READING:
-      if (!updateRainbowEffect())
+      if (!updateRainbowEffect()){
         currentRobotState = PLAYING;
+        executeActions();
+      }
     break;
     case PLAYING:
-      setColor(255, 255, 255);
+      updateActions();
     break;
     case PAUSED:
-      setColor(255, 255, 0);
+      updateBlinkEffect(true);
     break;
     case STOPING:
-      if (!updateBlinkEffect())
+      if (!updateBlinkEffect(false))
         currentRobotState = STANDBY;
     break;
     case FINISHED:
@@ -634,6 +644,83 @@ bool checkStateChange(){
       return 1;
     break;
   }
-
   return 0;
+}
+
+String findColor(char c){
+  switch(c){
+    case 'A':
+      return "blue";
+    case 'B':
+      return "red";
+    case 'C':
+      return "green";
+    case 'D':
+      return "pink";
+    case 'F':
+      return "yellow";
+    case 'H':
+      return "cyan";
+    default:
+      return "white";
+  }
+}
+
+bool executeActions(){
+  if (currentPuzzle == NULL)
+    return false;
+
+  playStartTime = millis();
+  startBlinkEffect(0, 600, findColor(currentPuzzle->color));
+  // iniciar animacion
+  // iniciar servos
+  // iniciar sonido
+  return true;
+}
+
+bool updateActions(){
+  if (currentPuzzle == NULL)
+    return false;
+
+  unsigned long currentTime = millis();
+
+  if (currentTime - playStartTime >= currentPuzzle->timeSlice){
+    currentPuzzle->timeSlice = timeSlice;
+
+    if (currentPuzzle->next == NULL){
+      if (iterationsCount > 0){
+        currentPuzzle = list;
+        executeActions();
+        iterationsCount--;
+      } else {
+        // FINALIZAR
+        currentRobotState = FINISHED;
+        playStartTime = 0;
+        startRainbowEffect(3000, 8);
+        currentSystemState = RESET;
+        deleteList();
+        // neutralizar pantallas
+        // neutralizar servos
+        // detener melodía
+        return;
+      }
+    } else {
+      currentPuzzle = currentPuzzle->next;
+      executeActions();
+    }
+  }
+
+  updateBlinkEffect(true);
+  // actualizar animación
+  return true;
+}
+
+void pauseActions(){
+  if (currentPuzzle == NULL)
+    return;
+
+  currentPuzzle->timeSlice = currentPuzzle->timeSlice - (millis() - playStartTime);
+  // neutralizar pantallas
+  // neutralizar servos
+  // pausar melodía
 }

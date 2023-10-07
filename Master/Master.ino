@@ -1,4 +1,5 @@
-#include "LedControl.h"
+#include <MD_MAX72xx.h>
+#include "MD_RobotEyes.h"
 #include "Servo.h"
 
 // Pin Definitions
@@ -12,6 +13,8 @@
 #define LED_R 6     //CHECK
 #define LED_G 9     //CHECK
 #define LED_B 10    //CHECK
+#define HARDWARE_TYPE MD_MAX72XX::FC16_HW
+#define MAX_DEVICES 2
 
 // Estructura de cada vagón programado
 struct Puzzle {
@@ -59,6 +62,36 @@ enum SysState {
   OK
 };
 
+enum AnimationState {
+  NEUTRAL,
+  BLINK,
+  WINK,
+  LEFT_RIGHT,
+  UP,
+  DOWN,
+  ANGRY,
+  SAD,
+  EVIL,
+  SQUINT,
+  DEAD,
+  SCAN_V,
+  SCAN_H
+};
+
+enum AnimControl{
+  IDLE,
+  IN_PROGRESS,
+  FINISHING
+};
+
+AnimationState animationState = NEUTRAL;
+AnimControl animationControl = IDLE;
+bool controlActive = false;
+
+bool isWinking = false;
+bool isLeftRight = false;
+unsigned long startAnimationTime = 0;
+
 volatile BotState currentRobotState = TURN_ON;
 volatile BotState previousRobotState = TURN_ON;
 volatile SerialPortState serialPortState = SLEEPING;
@@ -93,56 +126,40 @@ const unsigned long timeSlice = 10000;
 unsigned long playStartTime = 0;
 
 // Controladores
-LedControl lc = LedControl(DIN, CLK, CS, 2);
+MD_MAX72XX M = MD_MAX72XX(HARDWARE_TYPE, DIN, CLK, CS, MAX_DEVICES);
+
+MD_RobotEyes E;
+bool animation = false;
+
+typedef struct
+{
+  MD_RobotEyes::emotion_t e;
+  uint16_t timePause;  // in milliseconds
+} sampleItem_t;
+
+const sampleItem_t eSeq[] = {
+  { MD_RobotEyes::E_NEUTRAL, 20000 },
+  { MD_RobotEyes::E_BLINK, 1000 },
+  { MD_RobotEyes::E_WINK, 1000 },
+  { MD_RobotEyes::E_LOOK_L, 1000 },
+  { MD_RobotEyes::E_LOOK_R, 1000 },
+  { MD_RobotEyes::E_LOOK_U, 1000 },
+  { MD_RobotEyes::E_LOOK_D, 1000 },
+  { MD_RobotEyes::E_ANGRY, 1000 },
+  { MD_RobotEyes::E_SAD, 1000 },
+  { MD_RobotEyes::E_EVIL, 1000 },
+  { MD_RobotEyes::E_EVIL2, 1000 },
+  { MD_RobotEyes::E_SQUINT, 1000 },
+  { MD_RobotEyes::E_DEAD, 1000 },
+  { MD_RobotEyes::E_SCAN_UD, 1000 },
+  { MD_RobotEyes::E_SCAN_LR, 1000 },
+};
+
 Servo servo1;
 Servo servo2;
 // SoftwareSerial portAudio(TX_DF, RX_DF); // RX, TX
 // DFRobotDFPlayerMini dfPlayer;
 
-// Plantilla
-byte eye_open[8] = {
-  B00111100,
-  B01111110,
-  B11111111,
-  B11100111,
-  B11100111,
-  B11111111,
-  B01111110,
-  B00111100
-};
-
-byte eye_right[8] = {
-  B00111100,
-  B01111110,
-  B11111111,
-  B11001111,
-  B11001111,
-  B11111111,
-  B01111110,
-  B00111100
-};
-
-byte eye_left[8] = {
-  B00111100,
-  B01111110,
-  B11111111,
-  B11110011,
-  B11110011,
-  B11111111,
-  B01111110,
-  B00111100
-};
-
-byte eye_close[8] = {
-  B00000000,
-  B00000000,
-  B00000000,
-  B00111100,
-  B11111111,
-  B00111100,
-  B00000000,
-  B00000000
-};
 
 void setup(){
   // Configuración de pines
@@ -155,13 +172,12 @@ void setup(){
   
   
   // display setup
-  int devices = lc.getDeviceCount();
-  for(int address = 0; address < devices; address++) {
-    lc.shutdown(address, false);
-    lc.setIntensity(address, 1);
-    lc.clearDisplay(address);
-  }  
-  open_eyes();
+  M.begin();
+  M.control(MD_MAX72XX::INTENSITY, 0); 
+  E.begin(&M);
+  E.setBlinkTime(10000);
+  startScanHAnimation();
+  
   startRainbowEffect(3000, 8);
 
   // servo1.attach(SERVO_1); 
@@ -176,13 +192,16 @@ void setup(){
 
 void loop(){
   updateSystem();
+
+  E.runAnimation();
+
   if (checkStateChange())
-    updateLed();
+    updateRobot();
 }
 
 void buttonPressed() {
   buttonState = digitalRead(BUTTON);
-  delay(50);
+  delay(10);
 
   if (buttonState){
     if(currentRobotState == STANDBY && currentSystemState == OK){
@@ -192,9 +211,11 @@ void buttonPressed() {
         currentRobotState = STOPING;
         currentSystemState = RESET;
         startBlinkEffect(3000, 300, "red");
+        startDeadAnimation();
       } else {
         currentRobotState = READING;
         startRainbowEffect(3000, 8);
+        startScanVAnimation();
       }
 
     } else if (currentRobotState == PAUSED && paused){
@@ -206,6 +227,7 @@ void buttonPressed() {
         currentRobotState = STOPING;
         currentSystemState = RESET;
         startBlinkEffect(3000, 300, "red");
+        startDeadAnimation();
         deleteList();
       }
       buttonPressTime = 0;
@@ -275,6 +297,8 @@ int wagonToInteger(char i){
 
 int loopToInteger(char i){
   switch (i){
+    case '0':
+      return 0;
     case '1':
       return 1;
     case '2':
@@ -343,14 +367,6 @@ void setColor(int R, int G, int B) {
 
 void turnOff() {
   setColor(0, 0, 0);
-}
-
-// Funciones para display
-void open_eyes(){
-  for (int i = 0; i < 8; i++) {
-    lc.setRow(0,i,eye_open[i]);
-    lc.setRow(1,i,eye_open[i]);
-  }
 }
 
 // Función para iniciar el efecto del arcoíris
@@ -469,8 +485,6 @@ bool updateBlinkEffect(bool infinity) {
 }
 
 void resetScanValues(){
-  wagonsCount = 0;
-  iterationsCount = 0;
   lastScanTime = millis();
   message = "";
   scanResult = "";
@@ -568,11 +582,13 @@ void updateSystem(){
   }
 }
 
-void updateLed(){
+void updateRobot(){
   switch (currentRobotState){
     case TURN_ON:
-      if (!updateRainbowEffect())
+      if (!updateRainbowEffect()) {
         currentRobotState = STANDBY;
+        finishAnimation();
+      }
     break;
     case STANDBY:
       switch (currentSystemState){
@@ -589,6 +605,7 @@ void updateLed(){
     break;
     case READING:
       if (!updateRainbowEffect()){
+        finishAnimation();
         currentRobotState = PLAYING;
         executeActions();
       }
@@ -600,12 +617,16 @@ void updateLed(){
       updateBlinkEffect(true);
     break;
     case STOPING:
-      if (!updateBlinkEffect(false))
+      if (!updateBlinkEffect(false)){
+        finishAnimation();
         currentRobotState = STANDBY;
+      }
     break;
     case FINISHED:
-      if (!updateRainbowEffect())
+      if (!updateRainbowEffect()){
         currentRobotState = STANDBY;
+        finishAnimation();
+      }
     break;
   }
 }
@@ -639,6 +660,7 @@ bool checkStateChange(){
         currentRobotState = STOPING;
         currentSystemState = RESET;
         startBlinkEffect(3000, 300, "red");
+        startDeadAnimation();
         deleteList();
       }
       return 1;
@@ -666,13 +688,33 @@ String findColor(char c){
   }
 }
 
+void startAnimation(char c){
+  switch(c){
+    case 'J':
+      startLeftRightAnimation();
+      break;
+    case 'I':
+      startAngryAnimation();
+      break;
+    case 'H':
+      startWinkBlinkAnimation();
+      break;
+    default:
+      startSquintAnimation();
+      break;
+  }  
+
+  animationControl = IN_PROGRESS;
+  controlActive = false;
+}
+
 bool executeActions(){
   if (currentPuzzle == NULL)
     return false;
 
   playStartTime = millis();
   startBlinkEffect(0, 600, findColor(currentPuzzle->color));
-  // iniciar animacion
+  startAnimation(currentPuzzle->eyes);
   // iniciar servos
   // iniciar sonido
   return true;
@@ -689,29 +731,70 @@ bool updateActions(){
 
     if (currentPuzzle->next == NULL){
       if (iterationsCount > 0){
-        currentPuzzle = list;
-        executeActions();
-        iterationsCount--;
+        if(!controlActive){
+          controlActive = true;
+          finishAnimation();
+          animationControl = FINISHING;
+        } else {
+          if (E.runAnimation()){
+            animationControl = IDLE;
+          }
+        }
+
+        if(animationControl == IDLE){
+          delay(300);
+          currentPuzzle = list;
+          playStartTime = 0;
+          executeActions();
+          iterationsCount--;
+        }
       } else {
         // FINALIZAR
-        currentRobotState = FINISHED;
-        playStartTime = 0;
-        startRainbowEffect(3000, 8);
-        currentSystemState = RESET;
-        deleteList();
-        // neutralizar pantallas
-        // neutralizar servos
-        // detener melodía
-        return;
+        if(!controlActive){
+          controlActive = true;
+          finishAnimation();
+          animationControl = FINISHING;
+        } else {
+          if (E.runAnimation()){
+            animationControl = IDLE;
+          }
+        }
+        if(animationControl == IDLE){
+          delay(300);
+          currentRobotState = FINISHED;
+          playStartTime = 0;
+          startRainbowEffect(3000, 8);
+          currentSystemState = RESET;
+          deleteList();
+          startDeadAnimation();
+          // neutralizar servos
+          // detener melodía
+          return false;
+        }
       }
     } else {
-      currentPuzzle = currentPuzzle->next;
-      executeActions();
+      if(!controlActive){
+        controlActive = true;
+        finishAnimation();
+        animationControl = FINISHING;
+      } else {
+        if (E.runAnimation()){
+          animationControl = IDLE;
+        }
+      }
+      if(animationControl == IDLE){
+        delay(300);
+        currentPuzzle = currentPuzzle->next;
+        executeActions();
+      }
     }
   }
 
   updateBlinkEffect(true);
-  // actualizar animación
+  if (animationState == WINK)
+    updateWinkBlinkAnimation();
+  if (animationState == LEFT_RIGHT)
+    updateLeftRightAnimation();
   return true;
 }
 
@@ -720,7 +803,192 @@ void pauseActions(){
     return;
 
   currentPuzzle->timeSlice = currentPuzzle->timeSlice - (millis() - playStartTime);
-  // neutralizar pantallas
+  forceFinishAnimation();
+  if (controlActive)
+    animationControl = IDLE;
   // neutralizar servos
   // pausar melodía
+}
+
+void finishAnimation(){
+  animation = E.runAnimation(); 
+
+  switch(animationState){
+    case NEUTRAL:
+    break;
+    case BLINK:
+    break;
+    case WINK:
+    case LEFT_RIGHT:
+      finishAnim();
+    break;
+    case UP:
+    break;
+    case DOWN:
+    break;
+    case ANGRY:
+      finishAngryAnimation();
+    break;
+    case SAD:
+      finishEvilAnimation();
+    break;
+    case EVIL:
+      finishEvilAnimation();
+    break;
+    case SQUINT:
+      finishSquintAnimation();
+    break;
+    case DEAD:
+    case SCAN_V:
+    case SCAN_H:
+      stopAnimation();
+    break;
+    }
+}
+
+void startScanHAnimation(){
+  E.setAnimation(eSeq[14].e, true, false);
+  E.setTypeAnimation(MD_RobotEyes::LOOPING);
+  E.runAnimation();
+  animationState = SCAN_H;
+}
+
+void startScanVAnimation(){
+  E.setAnimation(eSeq[13].e, true, false);
+  E.setTypeAnimation(MD_RobotEyes::LOOPING);
+  E.runAnimation();
+  animationState = SCAN_V;
+}
+
+void startDeadAnimation(){
+  E.setAnimation(eSeq[12].e, true, false);
+  E.setTypeAnimation(MD_RobotEyes::LOOPING);
+  E.runAnimation();
+  animationState = DEAD;
+}
+
+void stopAnimation() {
+  E.setTypeAnimation(MD_RobotEyes::RESETING);
+  finishAnim();
+}
+
+void forceFinishAnimation() {
+  E.setTypeAnimation(MD_RobotEyes::NORMAL);
+  E.setAutoBlink(true);
+  E.setBlinkTime(10000);
+  finishAnim();
+}
+
+void startAngryAnimation(){
+  E.setAnimation(eSeq[7].e, false, false);
+  E.setAutoBlink(false);
+  E.runAnimation();
+  animationState = ANGRY;
+}
+
+void finishAngryAnimation() {
+  E.setAnimation(eSeq[7].e, false, true);
+  E.setAutoBlink(true);
+  E.setBlinkTime(10000);
+  E.runAnimation();
+  animationState = NEUTRAL;
+}
+
+void startSadAnimation(){
+  E.setAnimation(eSeq[8].e, false, false);
+  E.setAutoBlink(false);
+  E.runAnimation();
+  animationState = SAD;
+}
+
+void finishSadAnimation() {
+  E.setAnimation(eSeq[8].e, false, true);
+  E.setAutoBlink(true);
+  E.setBlinkTime(10000);
+  E.runAnimation();
+  animationState = NEUTRAL;
+}
+
+void startEvilAnimation(){
+  E.setAnimation(eSeq[9].e, false, false);
+  E.setAutoBlink(false);
+  E.runAnimation();
+  animationState = EVIL;
+}
+
+void finishEvilAnimation() {
+  E.setAnimation(eSeq[9].e, false, true);
+  E.setAutoBlink(true);
+  E.setBlinkTime(10000);
+  E.runAnimation();
+  animationState = NEUTRAL;
+}
+
+void startSquintAnimation(){
+  E.setAnimation(eSeq[11].e, false, false);
+  E.setAutoBlink(false);
+  E.runAnimation();
+  animationState = SQUINT;
+}
+
+void finishSquintAnimation() {
+  E.setAnimation(eSeq[11].e, false, true);
+  E.setAutoBlink(true);
+  E.setBlinkTime(10000);
+  E.runAnimation();
+  animationState = NEUTRAL;
+}
+
+void startWinkBlinkAnimation(){
+  isWinking = false;
+  E.setAnimation(eSeq[0].e, false, false);
+  startAnimationTime = millis();
+  animationState = WINK;
+  E.runAnimation();
+}
+
+void updateWinkBlinkAnimation(){
+  if (isWinking && millis() - startAnimationTime >= 3000)
+  {
+    E.setAnimation(eSeq[1].e, true, false);
+    startAnimationTime = millis();
+    isWinking = false;
+  }
+  else if (!isWinking && millis() - startAnimationTime >= 3000)
+  {
+    E.setAnimation(eSeq[2].e, true, false);
+    startAnimationTime = millis();
+    isWinking = true;
+  }
+  E.runAnimation();
+}
+
+void startLeftRightAnimation(){
+  E.setAnimation(eSeq[0].e, false, false);
+  isLeftRight = false;
+  animationState = LEFT_RIGHT;
+  startAnimationTime = millis();
+}
+
+void updateLeftRightAnimation(){
+  if (isLeftRight)
+  {
+    if (E.runAnimation()){
+      E.setAnimation(eSeq[4].e, true, false);
+      isLeftRight = false;
+    }
+  }
+  else if (millis() - startAnimationTime >= 3500)
+  {
+    E.setAnimation(eSeq[3].e, true, false);
+    isLeftRight = true;
+    startAnimationTime = millis();
+  }
+  E.runAnimation();
+}
+
+void finishAnim() {
+  E.setAnimation(eSeq[0].e, false, false);
+  E.runAnimation();
+  animationState = NEUTRAL;
 }

@@ -21,6 +21,7 @@ enum BotState {
 
 BotState robotState = STANDBY;
 unsigned long startTime = 0;
+const unsigned long readWaitTime = 750;
 int id = 9;
 
 const float vin = 3.3;
@@ -64,7 +65,6 @@ void setup() {
   analogReference(EXTERNAL);
   startTime = millis();
   delay(4);
-  startRainbowEffect(3000, 8);
 }
 
 void loop() {
@@ -73,7 +73,7 @@ void loop() {
     startTime = millis();
   }
 
-  updateRainbowEffect();
+  updateRGB();
 }
 
 float calculateResistance(int pin, float ref){
@@ -99,21 +99,12 @@ void serialEvent(){
   } else if (message[0] == '$'){  // message of resistance's read
     String actions = message + generateString();
     Serial.print(actions);
-  } else if (message[0] == '*'){
-    if (message == "*STANDBY")
-      robotState = STANDBY;
-    else if (message == "*READING")
-      robotState = READING;
-    else if (message == ("*"+idToString()))
-      robotState = CURRENT;
-    else if (message == "*PAUSED")
-      robotState = PAUSED;
-    else if (message == "*FINISHING")
-      robotState = FINISHING;
-    else 
-      robotState = PLAYING;
-
+  } else if (message[0] == '*'){  // message of update robot state
+    updateRobotState(message);
+    if(robotState == READING)
+      delay(readWaitTime);
     Serial.print(message + "!");
+    setRGB();
   }
 
   Serial.flush();
@@ -223,6 +214,46 @@ void setColor(int R, int G, int B) {
   analogWrite(LED_R, R);
   analogWrite(LED_G, G);
   analogWrite(LED_B, B);
+}
+
+void setColor(String color) {
+    if (color == "red"){
+    red_blink = 255;
+    green_blink = 0;
+    blue_blink = 0;
+  } else if (color == "green"){
+    red_blink = 0;
+    green_blink = 255;
+    blue_blink = 0;
+  } else if (color == "blue"){
+    red_blink = 0;
+    green_blink = 0;
+    blue_blink = 255;
+  } else if (color == "yellow"){
+    red_blink = 255;
+    green_blink = 100;
+    blue_blink = 0;
+  } else if (color == "pink"){
+    red_blink = 255;
+    green_blink = 0;
+    blue_blink = 255;
+  } else if (color == "cyan"){
+    red_blink = 0;
+    green_blink = 255;
+    blue_blink = 255;
+  } else if (color == "white"){
+    red_blink = 255;
+    green_blink = 255;
+    blue_blink = 255;
+  } else {
+    red_blink = 0;
+    green_blink = 0;
+    blue_blink = 0;
+  }
+
+  analogWrite(LED_R, red_blink);
+  analogWrite(LED_G, green_blink);
+  analogWrite(LED_B, blue_blink);
 }
 
 void turnOff() {
@@ -393,4 +424,49 @@ void refreshLedIndicator(){
     digitalWrite(LED_4, ledState4);
     prevLedState4 = ledState4;
   }  
+}
+
+void setRGB(){
+  switch(robotState){
+    case READING:
+    case PLAYING:
+      setColor(findColor(encoderColor()[0]));
+    break;
+    case CURRENT:
+      startBlinkEffect(0,600,findColor(encoderColor()[0]));
+    break;
+    case FINISHING:
+      startRainbowEffect(3000,8);
+    break;
+    case STANDBY:
+    case PAUSED:
+      turnOff();
+    break;
+  }
+}
+
+void updateRGB(){
+  switch(robotState){
+    case CURRENT:
+      updateBlinkEffect(true);
+    break;
+    case FINISHING:
+      updateRainbowEffect();
+    break;
+  }
+}
+
+void updateRobotState(String message){
+  if (message == "*STANDBY")
+    robotState = STANDBY;
+  else if (message == "*READING")
+    robotState = READING;
+  else if (message == ("*"+idToString()))
+    robotState = CURRENT;
+  else if (message == "*PAUSED")
+    robotState = PAUSED;
+  else if (message == "*FINISHING")
+    robotState = FINISHING;
+  else 
+    robotState = PLAYING;
 }

@@ -1,18 +1,21 @@
-#include <MD_MAX72xx.h>
 #include "MD_RobotEyes.h"
 #include "Servo.h"
+#include "DFRobotDFPlayerMini.h"
+#include <SoftwareSerial.h>
 
 // Pin Definitions
 #define BUTTON 2    //CHECK
 #define SENSOR 4
-#define CLK 13      //CHECK
-#define CS 12       //CHECK
+#define LED_R 3     //CHECK
+#define LED_G 5     //CHECK
+#define LED_B 6    //CHECK
+#define RX 7        //CHECK
+#define TX 8        //CHECK
+#define SERVO_1 9   //CHECK
+#define SERVO_2 10   //CHECK
 #define DIN 11      //CHECK
-#define SERVO_1 3   //CHECK
-#define SERVO_2 5   //CHECK
-#define LED_R 6     //CHECK
-#define LED_G 9     //CHECK
-#define LED_B 10    //CHECK
+#define CS 12       //CHECK
+#define CLK 13      //CHECK
 #define HARDWARE_TYPE MD_MAX72XX::FC16_HW
 #define MAX_DEVICES 2
 
@@ -157,8 +160,8 @@ const sampleItem_t eSeq[] = {
 
 Servo servo1;
 Servo servo2;
-// SoftwareSerial portAudio(TX_DF, RX_DF); // RX, TX
-// DFRobotDFPlayerMini dfPlayer;
+SoftwareSerial softSerial(RX, TX); // RX, TX
+DFRobotDFPlayerMini myDFPlayer;
 
 
 void setup(){
@@ -176,18 +179,27 @@ void setup(){
   M.control(MD_MAX72XX::INTENSITY, 0); 
   E.begin(&M);
   E.setBlinkTime(10000);
-  startScanHAnimation();
-  
-  startRainbowEffect(3000, 8);
 
-  // servo1.attach(SERVO_1); 
-  // servo2.attach(SERVO_2); 
+  
+  servo1.attach(SERVO_1); 
+  servo2.attach(SERVO_2); 
 
   Serial.begin(9600);
+  softSerial.begin(9600);
 
   //attachInterrupt(digitalPinToInterrupt(SENSOR), sensorInterrupt, CHANGE);
   attachInterrupt(digitalPinToInterrupt(BUTTON), buttonPressed, CHANGE);
   delay(50);
+
+  startRainbowEffect(3000, 8);
+  startScanHAnimation();
+  // if (!myDFPlayer.begin(softSerial)) {  //Use softwareSerial to communicate with mp3.
+  //   Serial.println("Error inicializando modulo mp3");
+  // } else {
+  //   Serial.println("Inicialización correcta DFPlayer");
+  //   // myDFPlayer.volume(25);  //Set volume value. From 0 to 30
+  //   // myDFPlayer.play(0005);  //Play the first mp3
+  // }
 }
 
 void loop(){
@@ -210,12 +222,14 @@ void buttonPressed() {
       if (list == NULL){
         currentRobotState = STOPING;
         currentSystemState = RESET;
+        Serial.print("*STANDBY!");
         startBlinkEffect(3000, 300, "red");
         startDeadAnimation();
       } else {
         currentRobotState = READING;
         startRainbowEffect(3000, 8);
         startScanVAnimation();
+        Serial.print("*READING!");
       }
 
     } else if (currentRobotState == PAUSED && paused){
@@ -225,6 +239,7 @@ void buttonPressed() {
         // se reanudan las acciones del robot donde se pausaron
       } else {
         currentRobotState = STOPING;
+        Serial.print("*STANDBY!");
         currentSystemState = RESET;
         startBlinkEffect(3000, 300, "red");
         startDeadAnimation();
@@ -626,6 +641,7 @@ void updateRobot(){
       if (!updateRainbowEffect()){
         currentRobotState = STANDBY;
         finishAnimation();
+        Serial.print("*STANDBY!");
       }
     break;
   }
@@ -715,6 +731,7 @@ bool executeActions(){
   playStartTime = millis();
   startBlinkEffect(0, 600, findColor(currentPuzzle->color));
   startAnimation(currentPuzzle->eyes);
+  Serial.print("*"+idToString(currentPuzzle->slave));
   // iniciar servos
   // iniciar sonido
   return true;
@@ -767,6 +784,7 @@ bool updateActions(){
           currentSystemState = RESET;
           deleteList();
           startDeadAnimation();
+          Serial.print("*FINISHING!");
           // neutralizar servos
           // detener melodía
           return false;
@@ -801,6 +819,8 @@ bool updateActions(){
 void pauseActions(){
   if (currentPuzzle == NULL)
     return;
+  
+  Serial.print("*PAUSED!");
 
   currentPuzzle->timeSlice = currentPuzzle->timeSlice - (millis() - playStartTime);
   forceFinishAnimation();
@@ -991,4 +1011,23 @@ void finishAnim() {
   E.setAnimation(eSeq[0].e, false, false);
   E.runAnimation();
   animationState = NEUTRAL;
+}
+
+String idToString(int id){
+  switch (id){
+    case 1:
+      return "1";
+    case 2:
+      return "2";
+    case 3:
+      return "3";
+    case 4:
+      return "4";
+    case 5:
+      return "5";
+    case 6:
+      return "6";
+    default: 
+      return "9";
+  }
 }

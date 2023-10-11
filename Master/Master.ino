@@ -180,10 +180,6 @@ void setup(){
   E.begin(&M);
   E.setBlinkTime(10000);
 
-  
-  servo1.attach(SERVO_1); 
-  servo2.attach(SERVO_2); 
-
   Serial.begin(9600);
   softSerial.begin(9600);
 
@@ -222,28 +218,34 @@ void buttonPressed() {
       if (list == NULL){
         currentRobotState = STOPING;
         currentSystemState = RESET;
-        Serial.print("*STANDBY!");
+        //Serial.print("*STANDBY!");
         startBlinkEffect(3000, 300, "red");
         startDeadAnimation();
       } else {
         currentRobotState = READING;
         startRainbowEffect(3000, 8);
         startScanVAnimation();
-        Serial.print("*READING!");
+        enableServos();
+        //Serial.print("*READING!");
       }
 
     } else if (currentRobotState == PAUSED && paused){
       if ((millis() - buttonPressTime) < 4000){
         currentRobotState = PLAYING;
+        finishBlinkEffect();
+        setColor(0, 255, 0);
         executeActions();
         // se reanudan las acciones del robot donde se pausaron
       } else {
         currentRobotState = STOPING;
-        Serial.print("*STANDBY!");
         currentSystemState = RESET;
+        //Serial.print("*STANDBY!");
         startBlinkEffect(3000, 300, "red");
         startDeadAnimation();
+        stop();
+        disableServos();
         deleteList();
+        // detener sonido
       }
       buttonPressTime = 0;
     }
@@ -253,8 +255,6 @@ void buttonPressed() {
       paused = false;
       startBlinkEffect(0, 750, "yellow");
       pauseActions();
-      // se envía mensaje de pausado a esclavos
-      // se pausan todas las acciones y se guarda el progreso
       return;
     } else if (currentRobotState == PAUSED){
       buttonPressTime = millis();
@@ -435,6 +435,18 @@ void startBlinkEffect(unsigned long duration, unsigned long interval, String col
   }
 }
 
+void finishBlinkEffect() {
+  blinkStartTime = 0;
+  blinkDuration = 0;
+  blinkInterval = 0;
+  turnOff();
+  blinkState = false;
+
+  red_blink = 0;
+  green_blink = 0;
+  blue_blink = 0;
+}
+
 bool updateRainbowEffect() {
   if (rainbowStartTime == 0) {
     // El efecto del arcoíris no está activo
@@ -462,11 +474,6 @@ bool updateRainbowEffect() {
 
   setColor(red, green, blue);
   return 1;
-}
-
-void finishBlinkEffect(){
-  blinkStartTime = 0;
-  turnOff(); // Apagar el LED al finalizar el efecto
 }
 
 bool updateBlinkEffect(bool infinity) {
@@ -622,6 +629,7 @@ void updateRobot(){
       if (!updateRainbowEffect()){
         finishAnimation();
         currentRobotState = PLAYING;
+        setColor(0, 255, 0);
         executeActions();
       }
     break;
@@ -641,7 +649,7 @@ void updateRobot(){
       if (!updateRainbowEffect()){
         currentRobotState = STANDBY;
         finishAnimation();
-        Serial.print("*STANDBY!");
+        //Serial.print("*STANDBY!");
       }
     break;
   }
@@ -673,10 +681,15 @@ bool checkStateChange(){
     case PLAYING:
     case PAUSED:
       if(changeSystemState){
+        forceFinishAnimation();
         currentRobotState = STOPING;
         currentSystemState = RESET;
+        //Serial.print("*STANDBY!");
         startBlinkEffect(3000, 300, "red");
         startDeadAnimation();
+        stop();
+        disableServos();
+        // detener sonido
         deleteList();
       }
       return 1;
@@ -724,15 +737,41 @@ void startAnimation(char c){
   controlActive = false;
 }
 
+void startServos(char c){
+  switch(c){
+    case 'J':
+      straight();
+    break;
+    case 'I':
+      left();
+    break;
+    case 'H':
+      right();
+    break;
+    case 'G':
+      left180();
+    break;
+    case 'E':
+      right180();
+    break;
+    case 'C':
+      stop();
+    break;
+    default:
+      stop();
+    break;
+  }
+}
+
 bool executeActions(){
   if (currentPuzzle == NULL)
     return false;
 
   playStartTime = millis();
-  startBlinkEffect(0, 600, findColor(currentPuzzle->color));
+  // startBlinkEffect(0, 600, findColor(currentPuzzle->color));
   startAnimation(currentPuzzle->eyes);
-  Serial.print("*"+idToString(currentPuzzle->slave));
-  // iniciar servos
+  //Serial.print("*"+idToString(currentPuzzle->slave));
+  startServos(currentPuzzle->direction);
   // iniciar sonido
   return true;
 }
@@ -761,7 +800,6 @@ bool updateActions(){
         if(animationControl == IDLE){
           delay(300);
           currentPuzzle = list;
-          playStartTime = 0;
           executeActions();
           iterationsCount--;
         }
@@ -779,14 +817,15 @@ bool updateActions(){
         if(animationControl == IDLE){
           delay(300);
           currentRobotState = FINISHED;
-          playStartTime = 0;
-          startRainbowEffect(3000, 8);
           currentSystemState = RESET;
-          deleteList();
+          //Serial.print("*FINISHING!");
+          startRainbowEffect(3000, 8);
           startDeadAnimation();
-          Serial.print("*FINISHING!");
-          // neutralizar servos
+          stop();
+          disableServos();
           // detener melodía
+          deleteList();
+          playStartTime = 0;
           return false;
         }
       }
@@ -820,13 +859,13 @@ void pauseActions(){
   if (currentPuzzle == NULL)
     return;
   
-  Serial.print("*PAUSED!");
+  //Serial.print("*PAUSED!");
 
   currentPuzzle->timeSlice = currentPuzzle->timeSlice - (millis() - playStartTime);
   forceFinishAnimation();
   if (controlActive)
     animationControl = IDLE;
-  // neutralizar servos
+  stop();
   // pausar melodía
 }
 
@@ -1030,4 +1069,59 @@ String idToString(int id){
     default: 
       return "9";
   }
+}
+
+void enableServos(){
+  servo1.attach(SERVO_1); 
+  servo2.attach(SERVO_2); 
+}
+
+void disableServos(){
+  servo1.detach(); 
+  servo2.detach(); 
+}
+
+void stop(){
+  servo1.write(90);
+  servo2.write(90);
+}
+
+void straight(){
+  servo1.write(100);
+  servo2.write(80);
+}
+
+void straightSlow(){
+  servo1.write(105);
+  servo2.write(75);
+}
+
+void left(){
+  servo1.write(100);
+  servo2.write(70);
+}
+
+void right(){
+  servo1.write(110);
+  servo2.write(80);
+}
+
+void left180(){
+  servo1.write(95);
+  servo2.write(70);
+}
+
+void right180(){
+  servo1.write(110);
+  servo2.write(85);
+}
+
+void left45(){
+  servo1.write(95);
+  servo2.write(80);
+}
+
+void right45(){
+  servo1.write(100);
+  servo2.write(85);
 }

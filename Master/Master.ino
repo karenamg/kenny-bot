@@ -128,7 +128,7 @@ String message = "";
 String scanResult = "";
 int wagonsCount = 0;
 int iterationsCount = 0;
-const unsigned long intervalScan = 500; 
+const unsigned long intervalScan = 750; 
 unsigned long lastScanTime = 0;
 
 // Duración de cada recorrido
@@ -195,15 +195,13 @@ void setup(){
   attachInterrupt(digitalPinToInterrupt(BUTTON), buttonPressed, CHANGE);
   delay(50);
 
+  if (myDFPlayer.begin(softSerial)) {  //Use softwareSerial to communicate with mp3.
+    myDFPlayer.volume(25);  //Set volume value. From 0 to 30
+    myDFPlayer.play(1);  //Play the first mp3
+  }
+
   startRainbowEffect(3000, 8);
   startScanHAnimation();
-  // if (!myDFPlayer.begin(softSerial)) {  //Use softwareSerial to communicate with mp3.
-  //   Serial.println("Error inicializando modulo mp3");
-  // } else {
-  //   Serial.println("Inicialización correcta DFPlayer");
-  //   // myDFPlayer.volume(25);  //Set volume value. From 0 to 30
-  //   // myDFPlayer.play(0005);  //Play the first mp3
-  // }
 }
 
 void loop(){
@@ -227,11 +225,13 @@ void buttonPressed() {
         currentRobotState = STOPING;
         currentSystemState = RESET;
         //Serial.print("*STANDBY!");
+        myDFPlayer.play(10);
         startBlinkEffect(3000, 300, "red");
         startDeadAnimation();
       } else {
         currentRobotState = READING;
-        startRainbowEffect(3000, 8);
+        myDFPlayer.play(9);
+        startRainbowEffect(5000, 14);
         startScanVAnimation();
         enableServos();
         //Serial.print("*READING!");
@@ -248,6 +248,7 @@ void buttonPressed() {
         currentRobotState = STOPING;
         currentSystemState = RESET;
         //Serial.print("*STANDBY!");
+        myDFPlayer.play(10);
         startBlinkEffect(3000, 300, "red");
         startDeadAnimation();
         stop();
@@ -256,6 +257,11 @@ void buttonPressed() {
         // detener sonido
       }
       buttonPressTime = 0;
+    }
+    if (currentSystemState == ERROR){
+      myDFPlayer.play(2);
+    } else if (currentSystemState == BUILDING){
+      myDFPlayer.play(8);
     }
   } else {
     if (currentRobotState == PLAYING){
@@ -673,8 +679,26 @@ bool checkStateChange(){
     return 1;
   }
   
-  if (changeSystemState)
+  if (changeSystemState){
+    switch (currentSystemState){
+      case ERROR:
+        if(previousSystemState == BUILDING || previousSystemState == OK)
+          myDFPlayer.play(8);
+      break;
+      case BUILDING:
+        if(previousSystemState == ERROR)
+          myDFPlayer.play(6);
+        if(previousSystemState == OK)
+          myDFPlayer.play(10);
+      break;
+      case OK:
+        if(previousSystemState == ERROR || previousSystemState == BUILDING)
+          myDFPlayer.play(3);
+      break;
+    }
+    
     previousSystemState = currentSystemState;
+  }
 
   switch(currentRobotState){
     case TURN_ON:
@@ -694,6 +718,7 @@ bool checkStateChange(){
         currentRobotState = STOPING;
         currentSystemState = RESET;
         //Serial.print("*STANDBY!");
+        myDFPlayer.play(10);
         startBlinkEffect(3000, 300, "red");
         startDeadAnimation();
         stop();
@@ -772,6 +797,32 @@ void startServos(char c){
   }
 }
 
+void startMusic(char c){
+  switch(c){
+    case 'A':
+      myDFPlayer.play(12);
+    break;
+    case 'B':
+      myDFPlayer.play(13);
+    break;
+    case 'C':
+      myDFPlayer.play(14);
+    break;
+    case 'D':
+      myDFPlayer.play(15);
+    break;
+    case 'F':
+      myDFPlayer.play(16);
+    break;
+    case 'H':
+      myDFPlayer.play(17);
+    break;
+    default:
+      stop();
+    break;
+  }
+}
+
 bool executeActions(){
   if (currentPuzzle == NULL)
     return false;
@@ -781,7 +832,7 @@ bool executeActions(){
   startAnimation(currentPuzzle->eyes);
   //Serial.print("*"+idToString(currentPuzzle->slave));
   startServos(currentPuzzle->direction);
-  // iniciar sonido
+  startMusic(currentPuzzle->sound);
   return true;
 }
 
@@ -797,6 +848,7 @@ bool updateActions(){
         if(!controlActive){
           controlActive = true;
           finishAnimation();
+          stop();
           animationControl = FINISHING;
         } else {
           if (E.runAnimation()){
@@ -805,6 +857,7 @@ bool updateActions(){
         }
 
         if(animationControl == IDLE){
+          myDFPlayer.pause();
           delay(300);
           currentPuzzle = list;
           elapsedTime = 0;
@@ -817,20 +870,22 @@ bool updateActions(){
           controlActive = true;
           finishAnimation();
           animationControl = FINISHING;
+          stop();
+          disableServos();
         } else {
           if (E.runAnimation()){
             animationControl = IDLE;
           }
         }
         if(animationControl == IDLE){
+          myDFPlayer.pause();
           delay(300);
+          myDFPlayer.play(5);
           currentRobotState = FINISHED;
           currentSystemState = RESET;
           //Serial.print("*FINISHING!");
-          startRainbowEffect(3000, 8);
+          startRainbowEffect(2000, 6);
           startDeadAnimation();
-          stop();
-          disableServos();
           // detener melodía
           deleteList();
           playStartTime = 0;
@@ -875,7 +930,7 @@ void pauseActions(){
   if (controlActive)
     animationControl = IDLE;
   stop();
-  // pausar melodía
+  myDFPlayer.pause();
 }
 
 void finishAnimation(){

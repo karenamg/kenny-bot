@@ -224,17 +224,19 @@ void buttonPressed() {
       if (list == NULL){
         currentRobotState = STOPING;
         currentSystemState = RESET;
-        //Serial.print("*STANDBY!");
+        Serial.print("*STANDBY!");
         myDFPlayer.play(10);
         startBlinkEffect(3000, 300, "red");
         startDeadAnimation();
+        Serial.flush();
       } else {
         currentRobotState = READING;
         myDFPlayer.play(9);
         startRainbowEffect(5000, 14);
         startScanVAnimation();
         enableServos();
-        //Serial.print("*READING!");
+        Serial.print("*READING!");
+        Serial.flush();
       }
 
     } else if (currentRobotState == PAUSED && paused){
@@ -247,8 +249,9 @@ void buttonPressed() {
       } else {
         currentRobotState = STOPING;
         currentSystemState = RESET;
-        //Serial.print("*STANDBY!");
+        Serial.print("*STANDBY!");
         myDFPlayer.play(10);
+        Serial.flush();
         startBlinkEffect(3000, 300, "red");
         startDeadAnimation();
         stop();
@@ -561,6 +564,7 @@ void updateSystem(){
     break;
     case START_COUNT:
       Serial.print("#0!");   // Inicia conteo de vagones
+      Serial.flush();
       serialPortState = WAIT_COUNT_RESPONSE;
     break;
     case WAIT_COUNT_RESPONSE:
@@ -587,6 +591,7 @@ void updateSystem(){
     break;
     case START_SCAN:
       Serial.print("$!");   // Inicia scaneo de vagones
+      Serial.flush();
       serialPortState = WAIT_SCAN_RESPONSE;
     break;
     case WAIT_SCAN_RESPONSE:
@@ -616,6 +621,8 @@ void updateSystem(){
       }
     break;
   }
+
+  Serial.flush();
 }
 
 void updateRobot(){
@@ -664,7 +671,8 @@ void updateRobot(){
       if (!updateRainbowEffect()){
         currentRobotState = STANDBY;
         finishAnimation();
-        //Serial.print("*STANDBY!");
+        Serial.print("*STANDBY!");
+        Serial.flush();
       }
     break;
   }
@@ -717,8 +725,9 @@ bool checkStateChange(){
         forceFinishAnimation();
         currentRobotState = STOPING;
         currentSystemState = RESET;
-        //Serial.print("*STANDBY!");
+        Serial.print("*STANDBY!");
         myDFPlayer.play(10);
+        Serial.flush();
         startBlinkEffect(3000, 300, "red");
         startDeadAnimation();
         stop();
@@ -828,11 +837,13 @@ bool executeActions(){
     return false;
 
   playStartTime = millis();
-  // startBlinkEffect(0, 600, findColor(currentPuzzle->color));
-  startAnimation(currentPuzzle->eyes);
-  //Serial.print("*"+idToString(currentPuzzle->slave));
-  startServos(currentPuzzle->direction);
-  startMusic(currentPuzzle->sound);
+  Serial.print("*" + idToString(currentPuzzle->slave) + "!");
+  if(!controlActive){
+    startAnimation(currentPuzzle->eyes);
+    startServos(currentPuzzle->direction);
+    startMusic(currentPuzzle->sound);
+  }
+  Serial.flush();
   return true;
 }
 
@@ -883,10 +894,10 @@ bool updateActions(){
           myDFPlayer.play(5);
           currentRobotState = FINISHED;
           currentSystemState = RESET;
-          //Serial.print("*FINISHING!");
+          Serial.print("*FINISHING!");
+          Serial.flush();
           startRainbowEffect(2000, 6);
           startDeadAnimation();
-          // detener melodía
           deleteList();
           playStartTime = 0;
           return false;
@@ -923,7 +934,8 @@ void pauseActions(){
   if (currentPuzzle == NULL)
     return;
   
-  //Serial.print("*PAUSED!");
+  Serial.print("*PAUSED!");
+  Serial.flush();
 
   elapsedTime = elapsedTime + (millis() - playStartTime);
   forceFinishAnimation();

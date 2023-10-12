@@ -21,7 +21,9 @@ enum BotState {
 
 BotState robotState = STANDBY;
 unsigned long startTime = 0;
-const unsigned long readWaitTime = 750;
+unsigned long startReadTime = 0;
+const unsigned long readTimeSlice = 750;
+bool isReaded = false;
 int id = 9;
 
 const float vin = 3.3;
@@ -101,8 +103,10 @@ void serialEvent(){
     Serial.print(actions);
   } else if (message[0] == '*'){  // message of update robot state
     updateRobotState(message);
-    if(robotState == READING)
-      delay(readWaitTime);
+    if(robotState == READING){
+      startReadTime = millis();
+      isReaded = false;
+    }
     Serial.print(message + "!");
     setRGB();
   }
@@ -428,7 +432,6 @@ void refreshLedIndicator(){
 
 void setRGB(){
   switch(robotState){
-    case READING:
     case PLAYING:
       setColor(findColor(encoderColor()[0]));
     break;
@@ -438,6 +441,7 @@ void setRGB(){
     case FINISHING:
       startRainbowEffect(3000,8);
     break;
+    case READING:
     case STANDBY:
     case PAUSED:
       turnOff();
@@ -447,6 +451,14 @@ void setRGB(){
 
 void updateRGB(){
   switch(robotState){
+    case READING:
+      if (!isReaded)
+        if (millis() - startReadTime >= readTimeSlice * id){
+          setColor(findColor(encoderColor()[0]));
+          startReadTime = 0;
+          isReaded = true;
+        }
+    break;
     case CURRENT:
       updateBlinkEffect(true);
     break;

@@ -81,6 +81,13 @@ enum AnimationState {
   SCAN_H
 };
 
+typedef enum
+{
+  NORMAL,
+  LOOPING,
+  RESETING,
+} typeOfAnimation_t;
+
 enum AnimControl{
   IDLE,
   IN_PROGRESS,
@@ -126,6 +133,7 @@ unsigned long lastScanTime = 0;
 
 // Duración de cada recorrido
 const unsigned long timeSlice = 10000;
+unsigned long elapsedTime = 0;
 unsigned long playStartTime = 0;
 
 // Controladores
@@ -630,6 +638,7 @@ void updateRobot(){
         finishAnimation();
         currentRobotState = PLAYING;
         setColor(0, 255, 0);
+        elapsedTime = 0;
         executeActions();
       }
     break;
@@ -782,9 +791,7 @@ bool updateActions(){
 
   unsigned long currentTime = millis();
 
-  if (currentTime - playStartTime >= currentPuzzle->timeSlice){
-    currentPuzzle->timeSlice = timeSlice;
-
+  if (currentTime - playStartTime >= currentPuzzle->timeSlice - elapsedTime){
     if (currentPuzzle->next == NULL){
       if (iterationsCount > 0){
         if(!controlActive){
@@ -800,6 +807,7 @@ bool updateActions(){
         if(animationControl == IDLE){
           delay(300);
           currentPuzzle = list;
+          elapsedTime = 0;
           executeActions();
           iterationsCount--;
         }
@@ -842,6 +850,7 @@ bool updateActions(){
       if(animationControl == IDLE){
         delay(300);
         currentPuzzle = currentPuzzle->next;
+        elapsedTime = 0;
         executeActions();
       }
     }
@@ -861,7 +870,7 @@ void pauseActions(){
   
   //Serial.print("*PAUSED!");
 
-  currentPuzzle->timeSlice = currentPuzzle->timeSlice - (millis() - playStartTime);
+  elapsedTime = elapsedTime + (millis() - playStartTime);
   forceFinishAnimation();
   if (controlActive)
     animationControl = IDLE;
@@ -932,7 +941,8 @@ void stopAnimation() {
 }
 
 void forceFinishAnimation() {
-  E.setTypeAnimation(MD_RobotEyes::NORMAL);
+  if (E.getTypeAnimation() == LOOPING)
+    E.setTypeAnimation(MD_RobotEyes::RESETING);
   E.setAutoBlink(true);
   E.setBlinkTime(10000);
   finishAnim();

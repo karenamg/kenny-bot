@@ -156,6 +156,8 @@ public:
 
   void setTypeAnimation(typeOfAnimation_t type) {_typeAnimation = type;};
 
+  typeOfAnimation_t getTypeAnimation() {return _typeAnimation;}
+
 protected:
   // Animations FSM state
   typedef enum

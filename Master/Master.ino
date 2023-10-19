@@ -196,7 +196,7 @@ void setup(){
   delay(50);
 
   if (myDFPlayer.begin(softSerial)) {  //Use softwareSerial to communicate with mp3.
-    myDFPlayer.volume(25);  //Set volume value. From 0 to 30
+    myDFPlayer.volume(30);  //Set volume value. From 0 to 30
     myDFPlayer.play(1);  //Play the first mp3
   }
 
@@ -244,7 +244,18 @@ void buttonPressed() {
         currentRobotState = PLAYING;
         finishBlinkEffect();
         setColor(0, 255, 0);
-        executeActions();
+        if (!executeActions()){
+          currentRobotState = STOPING;
+          currentSystemState = RESET;
+          Serial.print("*STANDBY!");
+          myDFPlayer.play(10);
+          Serial.flush();
+          startBlinkEffect(3000, 300, "red");
+          startDeadAnimation();
+          stop();
+          disableServos();
+          deleteList();
+        }
         // se reanudan las acciones del robot donde se pausaron
       } else {
         currentRobotState = STOPING;
@@ -652,7 +663,18 @@ void updateRobot(){
         currentRobotState = PLAYING;
         setColor(0, 255, 0);
         elapsedTime = 0;
-        executeActions();
+        if (!executeActions()){
+          currentRobotState = STOPING;
+          currentSystemState = RESET;
+          Serial.print("*STANDBY!");
+          myDFPlayer.play(10);
+          Serial.flush();
+          startBlinkEffect(3000, 300, "red");
+          startDeadAnimation();
+          stop();
+          disableServos();
+          deleteList();
+        }
       }
     break;
     case PLAYING:
@@ -762,14 +784,23 @@ String findColor(char c){
 
 void startAnimation(char c){
   switch(c){
-    case 'J':
-      startLeftRightAnimation();
+    case 'A':
+      startSadAnimation();
       break;
-    case 'I':
+    case 'B':
       startAngryAnimation();
       break;
-    case 'H':
+    case 'C':
+      startLeftRightAnimation();
+      break;
+    case 'D':
       startWinkBlinkAnimation();
+      break;
+    case 'E':
+      startEvilAnimation();
+      break;
+    case 'F':
+      startNeutralAnimation();
       break;
     default:
       startSquintAnimation();
@@ -782,23 +813,23 @@ void startAnimation(char c){
 
 void startServos(char c){
   switch(c){
-    case 'J':
+    case 'A':
       straight();
     break;
-    case 'I':
+    case 'B':
       left();
     break;
-    case 'H':
+    case 'C':
       right();
     break;
-    case 'G':
-      left180();
+    case 'D':
+      stop();
     break;
     case 'E':
-      right180();
+      left180();
     break;
-    case 'C':
-      stop();
+    case 'F':
+      right180();
     break;
     default:
       stop();
@@ -820,14 +851,14 @@ void startMusic(char c){
     case 'D':
       myDFPlayer.play(15);
     break;
-    case 'F':
+    case 'E':
       myDFPlayer.play(16);
     break;
-    case 'H':
+    case 'F':
       myDFPlayer.play(17);
     break;
     default:
-      stop();
+      myDFPlayer.pause();
     break;
   }
 }
@@ -868,11 +899,23 @@ bool updateActions(){
         }
 
         if(animationControl == IDLE){
+          controlActive = false;
           myDFPlayer.pause();
           delay(300);
           currentPuzzle = list;
           elapsedTime = 0;
-          executeActions();
+          if (!executeActions()){
+            currentRobotState = STOPING;
+            currentSystemState = RESET;
+            Serial.print("*STANDBY!");
+            myDFPlayer.play(10);
+            Serial.flush();
+            startBlinkEffect(3000, 300, "red");
+            startDeadAnimation();
+            stop();
+            disableServos();
+            deleteList();
+          }
           iterationsCount--;
         }
       } else {
@@ -889,7 +932,9 @@ bool updateActions(){
           }
         }
         if(animationControl == IDLE){
+          controlActive = false;
           myDFPlayer.pause();
+          elapsedTime = 0;
           delay(300);
           myDFPlayer.play(5);
           currentRobotState = FINISHED;
@@ -907,6 +952,7 @@ bool updateActions(){
       if(!controlActive){
         controlActive = true;
         finishAnimation();
+        stop();
         animationControl = FINISHING;
       } else {
         if (E.runAnimation()){
@@ -914,10 +960,23 @@ bool updateActions(){
         }
       }
       if(animationControl == IDLE){
+        controlActive = false;
+        myDFPlayer.pause();
         delay(300);
         currentPuzzle = currentPuzzle->next;
         elapsedTime = 0;
-        executeActions();
+        if (!executeActions()){
+          currentRobotState = STOPING;
+          currentSystemState = RESET;
+          Serial.print("*STANDBY!");
+          myDFPlayer.play(10);
+          Serial.flush();
+          startBlinkEffect(3000, 300, "red");
+          startDeadAnimation();
+          stop();
+          disableServos();
+          deleteList();
+        }
       }
     }
   }
@@ -965,7 +1024,7 @@ void finishAnimation(){
       finishAngryAnimation();
     break;
     case SAD:
-      finishEvilAnimation();
+      finishSadAnimation();
     break;
     case EVIL:
       finishEvilAnimation();
@@ -993,6 +1052,14 @@ void startScanVAnimation(){
   E.setTypeAnimation(MD_RobotEyes::LOOPING);
   E.runAnimation();
   animationState = SCAN_V;
+}
+
+void startNeutralAnimation(){
+  E.setAnimation(eSeq[0].e, false, false);
+  E.runAnimation();
+  E.setAutoBlink(true);
+  E.setBlinkTime(5000);
+  animationState = NEUTRAL;
 }
 
 void startDeadAnimation(){

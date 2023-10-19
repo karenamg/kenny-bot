@@ -190,26 +190,18 @@ String encoderSound(){
 }
 
 String encoderResistance(float r){
-  if (r > 50 && r < 500)
+  if (r > 50 && r <= 650)           // r = 100Ω
     return "A";
-  else if (r > 650 && r < 1500)
+  else if (r > 650 && r <= 1500)    // r = 1KΩ
     return "B";
-  else if (r > 1600 && r < 2700)
+  else if (r > 1500 && r <= 3100)   // r = 2KΩ
     return "C";
-  else if (r > 4000 && r < 5000)
+  else if (r > 3100 && r <= 6500)   // r = 4.7KΩ
     return "D";
-  else if (r > 5000 && r < 6500)
+  else if (r > 6500 && r <= 15000)   // r = 10KΩ
     return "E";
-  else if (r > 9000 && r < 11500)
+  else if (r > 15000 && r <= 25000)   // r = 20KΩ
     return "F";
-  else if (r > 11501 && r < 13500)
-    return "G";
-  else if (r > 18000 && r < 24000)
-    return "H";
-  else if (r > 30000 && r < 60000)
-    return "I";
-  else   if (r > 65000 && r < 150000)
-    return "J";
   else
     return "X";
 }
@@ -274,9 +266,9 @@ String findColor(char c){
       return "green";
     case 'D':
       return "pink";
-    case 'F':
+    case 'E':
       return "yellow";
-    case 'H':
+    case 'F':
       return "cyan";
     default:
       return "white";
